@@ -25,7 +25,7 @@
   @keyframes popIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
   @keyframes bobIn { 0% { opacity: 0; transform: scale(.8) translateY(8px); } 60% { transform: scale(1.04); } 100% { opacity: 1; transform: none; } }
   .fadeIn { animation: fadeIn .3s cubic-bezier(.2,.7,.3,1) both; }
-  .softFade { animation: softFade .2s ease both; }
+  .softFade { animation: softFade .08s ease both; }
   .popIn { animation: popIn .26s cubic-bezier(.2,.7,.3,1) both; }
   .bobIn { animation: bobIn .5s cubic-bezier(.34,1.56,.5,1) both; }
   .press { transition: transform .08s ease, box-shadow .08s ease; }
@@ -1143,7 +1143,7 @@ function Quiz({ config, onFinish, onQuit }) {
     const nextQuestion = shouldContinue ? makeUniqueQuestion(config, usedCodes.current) : null;
     const nextReady = preloadQuestionAssets(nextQuestion);
 
-    const advanceDelay = config.mode === "timeAttack" ? 120 : 360;
+    const advanceDelay = config.mode === "timeAttack" ? 25 : 150;
     setTimeout(() => {
       answersRef.current = newAnswers; scoreRef.current = newScore;
       if (config.mode === "classic" && newAnswers.length >= CLASSIC_TOTAL) return finish();
@@ -1151,7 +1151,7 @@ function Quiz({ config, onFinish, onQuit }) {
       if (config.mode === "timeAttack" && timeLeft <= 0) return finish();
       if (usedCodes.current.length >= getQuizTargetPool(config).length) return finish();
       if (!nextQuestion) return finish();
-      const maxPreloadWait = config.mode === "timeAttack" ? 80 : 160;
+      const maxPreloadWait = config.mode === "timeAttack" ? 0 : 50;
       Promise.race([nextReady, wait(maxPreloadWait)]).then(() => {
         if (done.current) return;
         usedCodes.current = [nextQuestion.target.code, ...usedCodes.current];
@@ -1169,13 +1169,14 @@ function Quiz({ config, onFinish, onQuit }) {
     return null;
   };
   const hardMode = config.difficulty === "hard";
+  const classicQuestionNumber = Math.min(CLASSIC_TOTAL, Math.max(1, usedCodes.current.length));
 
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
       <Row style={[styles.qTop, hardMode && styles.qTopCompact]}>
         <Touchable className="press" onPress={onQuit} style={[styles.iconBtn, hardMode && styles.iconBtnCompact]}><Icon name="x" size={hardMode ? 16 : 18} color={T.navy} stroke={2.6} /></Touchable>
         <View style={{ flex: 1, alignItems: "center" }}>
-          {config.mode === "classic" && <Text style={[styles.statusTxt, hardMode && styles.statusTxtCompact]}>QUESTION {String(answers.length + 1).padStart(2, "0")} / {CLASSIC_TOTAL}</Text>}
+          {config.mode === "classic" && <Text style={[styles.statusTxt, hardMode && styles.statusTxtCompact]}>QUESTION {String(classicQuestionNumber).padStart(2, "0")} / {CLASSIC_TOTAL}</Text>}
           {config.mode === "timeAttack" && (
             <Row style={{ alignItems: "center", gap: 7 }}>
               <Icon name="stopwatch" size={hardMode ? 15 : 17} color={timeLeft <= 10 ? T.red : T.navy} stroke={2.1} />
@@ -1334,19 +1335,18 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
             <Text style={styles.authNotice}>No missed flags this round.</Text>
           </Module>
         )}
-        <View style={{ height: 92 }} />
+        <View style={styles.resultActions}>
+          <Row style={{ gap: 12 }}>
+            <Touchable className="press" onPress={onHome} style={[styles.secondaryBtn, styles.resultActionBtn, { flex: 1 }]}>
+              <Icon name="grid" size={17} color={T.navy} stroke={2.2} /><Text style={styles.secondaryTxt}>Home</Text>
+            </Touchable>
+            <Touchable className="press" onPress={onAgain} style={[styles.primaryBtn, styles.resultActionBtn, { flex: 1.45 }]}>
+              <Icon name="refresh" size={18} color={T.onRed} stroke={2.4} /><Text style={styles.primaryTxt}>Play Again</Text>
+            </Touchable>
+          </Row>
+        </View>
+        <View style={{ height: 28 }} />
       </Scroll>
-
-      <View style={styles.resultActions}>
-        <Row style={{ gap: 12 }}>
-          <Touchable className="press" onPress={onHome} style={[styles.secondaryBtn, styles.resultActionBtn, { flex: 1 }]}>
-            <Icon name="grid" size={17} color={T.navy} stroke={2.2} /><Text style={styles.secondaryTxt}>Home</Text>
-          </Touchable>
-          <Touchable className="press" onPress={onAgain} style={[styles.primaryBtn, styles.resultActionBtn, { flex: 1.5 }]}>
-            <Icon name="refresh" size={18} color={T.onRed} stroke={2.4} /><Text style={styles.primaryTxt}>Play Again</Text>
-          </Touchable>
-        </Row>
-      </View>
     </View>
   );
 }
@@ -1637,7 +1637,7 @@ const styles = {
   disabledBtn: { opacity: 0.58, boxShadow: `2px 2px 0 ${T.navy}` },
 
   footer: { padding: 16, paddingTop: 12, background: T.bg, borderTop: `2px solid ${T.navy}` },
-  resultActions: { paddingLeft: 20, paddingRight: 20, paddingTop: 4, paddingBottom: 12 },
+  resultActions: { width: "88%", alignSelf: "center", paddingTop: 4, paddingBottom: 12 },
   resultActionBtn: { paddingTop: 12, paddingBottom: 12, boxShadow: SH_SM },
   primaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, background: T.red, borderRadius: 8, border: `2px solid ${T.navy}`, paddingTop: 15, paddingBottom: 15, boxShadow: SH },
   setupCtaWrap: { alignItems: "center", paddingTop: 8, paddingBottom: 6 },
