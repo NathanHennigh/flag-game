@@ -85,11 +85,54 @@ http://127.0.0.1:5173/terms.html
 For Google's production consent screen, deploy these pages and use public HTTPS URLs, for example:
 
 ```text
-https://your-domain.com/privacy.html
-https://your-domain.com/terms.html
+https://flags.thehennighs.com/privacy
+https://flags.thehennighs.com/terms
 ```
 
 Before publishing, replace `your-email@example.com` in both files with your real contact email and have the boilerplate reviewed for your actual use case.
+
+For Vercel, `vercel.json` enables clean URLs so `/privacy` serves `privacy.html` and `/terms` serves `terms.html`.
+
+## Production auth on Vercel
+
+In Supabase Dashboard -> Authentication -> URL Configuration:
+
+- Site URL:
+
+```text
+https://flags.thehennighs.com
+```
+
+- Redirect URLs:
+
+```text
+https://flags.thehennighs.com/**
+http://127.0.0.1:5173/**
+http://localhost:5173/**
+```
+
+In Google Cloud / Google Auth Platform -> Clients -> your Web client:
+
+- Authorized JavaScript origins:
+
+```text
+https://flags.thehennighs.com
+http://127.0.0.1:5173
+http://localhost:5173
+```
+
+- Authorized redirect URIs:
+
+```text
+https://rarnxljkxegjokfzzipi.supabase.co/auth/v1/callback
+```
+
+Google consent screen links:
+
+```text
+https://flags.thehennighs.com/privacy
+https://flags.thehennighs.com/terms
+```
 
 ## 7. Progress database table
 

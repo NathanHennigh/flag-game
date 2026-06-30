@@ -34,7 +34,11 @@
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef } = React;
 
-const SUPABASE_CONFIG = window.WORLD_FLAGS_SUPABASE || {};
+const DEFAULT_SUPABASE_CONFIG = {
+  url: "https://rarnxljkxegjokfzzipi.supabase.co",
+  publishableKey: "sb_publishable_XXBSCN9MZfhQViKsKcWl2Q_mq9q19Oc",
+};
+const SUPABASE_CONFIG = window.WORLD_FLAGS_SUPABASE || DEFAULT_SUPABASE_CONFIG;
 const hasSupabaseConfig = Boolean(SUPABASE_CONFIG.url && SUPABASE_CONFIG.publishableKey);
 const hasSupabaseSdk = Boolean(window.supabase && window.supabase.createClient);
 const supabaseClient = hasSupabaseConfig && hasSupabaseSdk
@@ -1238,7 +1242,7 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
 
 /* ---------- APP ------------------------------------------------------------ */
 function App() {
-  const [tab, setTab] = useState("learn");
+  const [tab, setTab] = useState("account");
   const [quizScreen, setQuizScreen] = useState("home");
   const [config, setConfig] = useState({ type: "flagToName", scope: "world", difficulty: "medium", mode: "classic" });
   const [result, setResult] = useState(null);
