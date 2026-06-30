@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>World Flags — Flag Quiz</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23003650'/%3E%3Cpath d='M9 25V7h13l-3 5 3 5H9' fill='%23fd6951'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://flagcdn.com" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,6 +12,8 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="./supabase-config.js"></script>
 <style>
   html, body { margin: 0; padding: 0; background: #00283b; }
   * { box-sizing: border-box; }
@@ -30,6 +33,30 @@
 
 <script type="text/babel" data-presets="react">
 const { useState, useEffect, useRef } = React;
+
+const SUPABASE_CONFIG = window.WORLD_FLAGS_SUPABASE || {};
+const hasSupabaseConfig = Boolean(SUPABASE_CONFIG.url && SUPABASE_CONFIG.publishableKey);
+const hasSupabaseSdk = Boolean(window.supabase && window.supabase.createClient);
+const supabaseClient = hasSupabaseConfig && hasSupabaseSdk
+  ? window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.publishableKey, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
+    })
+  : null;
+
+const authRedirectTo = () => {
+  if (window.location.origin && window.location.origin !== "null") {
+    return `${window.location.origin}${window.location.pathname}`;
+  }
+  return window.location.href.split(/[?#]/)[0];
+};
+
+const authCallbackError = () => {
+  const hash = window.location.hash ? new URLSearchParams(window.location.hash.slice(1)) : null;
+  const query = window.location.search ? new URLSearchParams(window.location.search.slice(1)) : null;
+  return (hash && (hash.get("error_description") || hash.get("error"))) ||
+    (query && (query.get("error_description") || query.get("error"))) ||
+    "";
+};
 
 /* ──────────────────────────────────────────────────────────────────────────
    WORLD FLAGS — FLAG QUIZ
@@ -163,6 +190,19 @@ function Icon({ name, size = 24, color = "currentColor", stroke = 2, style }) {
       <path d="M8 5.4 H5.6 A1.7 1.7 0 0 0 5.6 9 H7.4" /><path d="M16 5.4 H18.4 A1.7 1.7 0 0 1 18.4 9 H16.6" />
       <path d="M12 12 V15" /><path d="M9 19.5 H15" /><path d="M9.8 19.5 C9.8 16.8 14.2 16.8 14.2 19.5" />
     </svg>);
+    case "user": return (<svg {...base}>
+      <circle cx="12" cy="8" r="3.6" /><path d="M4.8 20 C5.7 15.6 8.2 13.6 12 13.6 C15.8 13.6 18.3 15.6 19.2 20" />
+    </svg>);
+    case "logOut": return (<svg {...base}>
+      <path d="M10.5 4.5 H5.5 V19.5 H10.5" /><path d="M13 12 H21" /><path d="M17 8 L21 12 L17 16" />
+    </svg>);
+    case "google": return (<svg {...base} stroke="none">
+      <circle cx="12" cy="12" r="9" fill={T.white} />
+      <path d="M20.2 12.2 c0 -.7 -.1 -1.4 -.2 -2 H12 v3.8 h4.6 c-.2 1 -.8 1.9 -1.7 2.5 v2.1 h2.8 c1.6 -1.5 2.5 -3.7 2.5 -6.4Z" fill="#4285f4" />
+      <path d="M12 20.5 c2.3 0 4.2 -.8 5.7 -2 l-2.8 -2.1 c-.8 .5 -1.7 .8 -2.9 .8 c-2.2 0 -4.1 -1.5 -4.8 -3.5 H4.3 v2.2 c1.4 2.7 4.3 4.6 7.7 4.6Z" fill="#34a853" />
+      <path d="M7.2 13.7 c-.2 -.5 -.3 -1.1 -.3 -1.7 s.1 -1.2 .3 -1.7 V8.1 H4.3 c-.6 1.2 -.9 2.5 -.9 3.9 s.3 2.7 .9 3.9 l2.9 -2.2Z" fill="#fbbc05" />
+      <path d="M12 6.8 c1.3 0 2.4 .4 3.3 1.3 l2.5 -2.5 c-1.5 -1.4 -3.4 -2.2 -5.8 -2.2 c-3.4 0 -6.3 1.9 -7.7 4.7 l2.9 2.2 c.7 -2 2.6 -3.5 4.8 -3.5Z" fill="#ea4335" />
+    </svg>);
     default: return null;
   }
 }
@@ -259,6 +299,14 @@ function getPool(config) {
   return pool;
 }
 
+function getStudyPool(config) {
+  if (config.scope === "similar") {
+    const similarCodes = Array.from(new Set(SIMILAR_GROUPS.flat()));
+    return similarCodes.map((code) => BY_CODE[code]).filter(Boolean);
+  }
+  return getPool(config);
+}
+
 function makeQuestion(config, recent, weights = {}) {
   const n = NUM_OPTIONS[config.difficulty];
   if (config.scope === "similar") {
@@ -280,6 +328,15 @@ function makeQuestion(config, recent, weights = {}) {
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const accuracy = (r) => (r.total ? Math.round((r.score / r.total) * 100) : 0);
+const weekAgo = () => Date.now() - 7 * 24 * 60 * 60 * 1000;
+const avg = (nums) => nums.length ? nums.reduce((sum, n) => sum + n, 0) / nums.length : 0;
+const calcAccuracy = (runs) => {
+  const totals = runs.reduce((acc, run) => ({
+    score: acc.score + (run.score || 0),
+    total: acc.total + (run.total || 0),
+  }), { score: 0, total: 0 });
+  return totals.total ? Math.round((totals.score / totals.total) * 100) : 0;
+};
 
 /* ---------- shared UI ------------------------------------------------------ */
 function Module({ label, tone = "navy", right, children, style }) {
@@ -298,6 +355,235 @@ function Radio({ on }) {
   return <View style={[styles.radio, on && styles.radioOn]}>{on && <Icon name="check" size={13} color={T.onNavy} stroke={3} />}</View>;
 }
 
+function AppHeader({ kicker = "WORLD FLAGS", title }) {
+  return (
+    <React.Fragment>
+      <View style={styles.header}>
+        <View style={styles.brandBadge}><Icon name="globe" size={26} color={T.onNavy} stroke={2} /></View>
+        <View style={{ gap: 3 }}>
+          <Text style={styles.kicker}>{kicker}</Text>
+          <Text style={styles.brandName}>{title}</Text>
+        </View>
+      </View>
+      <View style={styles.headerRule} />
+    </React.Fragment>
+  );
+}
+
+function RegionGrid({ value, onChange }) {
+  return (
+    <Row style={{ flexWrap: "wrap", gap: 8 }}>
+      {SCOPES.map((s) => {
+        const on = value === s.key;
+        return (
+          <Touchable key={s.key} className="press" onPress={() => onChange(s.key)} style={[styles.regionCell, on && styles.regionCellOn]}>
+            <View style={styles.regionGlyph}><Icon name={s.icon} size={20} color={T.navy} stroke={2} /></View>
+            <View style={{ flex: 1, gap: 1 }}>
+              <Text style={styles.regionName}>{s.label}</Text>
+              <Text style={styles.regionCount}>{REGION_COUNT[s.key]} FLAGS</Text>
+            </View>
+          </Touchable>
+        );
+      })}
+    </Row>
+  );
+}
+
+function DifficultyTabs({ value, onChange, hint }) {
+  return (
+    <React.Fragment>
+      <Row style={styles.segWrap}>
+        {DIFFS.map((d) => {
+          const on = value === d.key;
+          return (
+            <Touchable key={d.key} onPress={() => onChange(d.key)} style={[styles.seg, on && styles.segOn]}>
+              <Text style={[styles.segLabel, on && styles.segLabelOn]}>{d.label}</Text>
+            </Touchable>
+          );
+        })}
+      </Row>
+      {hint && <Text style={styles.hint}>{hint}</Text>}
+    </React.Fragment>
+  );
+}
+
+function BottomNav({ active, onChange }) {
+  const items = [
+    { key: "learn", label: "Learn", icon: "layers" },
+    { key: "quiz", label: "Quiz", icon: "flag" },
+    { key: "account", label: "Account", icon: "user" },
+  ];
+  return (
+    <Row style={styles.navBar}>
+      {items.map((item) => {
+        const on = active === item.key;
+        return (
+          <Touchable key={item.key} className="press" onPress={() => onChange(item.key)} style={[styles.navItem, on && styles.navItemOn]}>
+            <Icon name={item.icon} size={19} color={on ? T.onNavy : T.navy} stroke={2.3} />
+            <Text style={[styles.navTxt, on && styles.navTxtOn]}>{item.label}</Text>
+          </Touchable>
+        );
+      })}
+    </Row>
+  );
+}
+
+function AuthPanel({ session, authReady }) {
+  const [mode, setMode] = useState("signIn");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(authCallbackError().replace(/\+/g, " "));
+  const user = session && session.user;
+  const emailReady = email.trim().length > 0 && password.length >= 6;
+
+  useEffect(() => {
+    if (user) {
+      setPassword("");
+      setNotice("");
+    }
+  }, [user && user.id]);
+
+  const handleEmailAuth = async () => {
+    if (!supabaseClient || busy) return;
+    if (!emailReady) {
+      setNotice("Enter an email and a password with at least 6 characters.");
+      return;
+    }
+    setBusy(true);
+    setNotice("");
+    const credentials = { email: email.trim(), password };
+    const { data, error } = mode === "signUp"
+      ? await supabaseClient.auth.signUp({
+          ...credentials,
+          options: { emailRedirectTo: authRedirectTo() },
+        })
+      : await supabaseClient.auth.signInWithPassword(credentials);
+    setBusy(false);
+    if (error) {
+      setNotice(error.message);
+      return;
+    }
+    setNotice(mode === "signUp" && !data.session
+      ? "Check your email to confirm your account."
+      : "Signed in.");
+  };
+
+  const handleGoogleAuth = async () => {
+    if (!supabaseClient || busy) return;
+    setBusy(true);
+    setNotice("");
+    const { error } = await supabaseClient.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo: authRedirectTo() },
+    });
+    if (error) {
+      setNotice(error.message);
+      setBusy(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (!supabaseClient || busy) return;
+    setBusy(true);
+    const { error } = await supabaseClient.auth.signOut();
+    setBusy(false);
+    setNotice(error ? error.message : "Signed out.");
+  };
+
+  if (!supabaseClient) {
+    return (
+      <Module label="ACCOUNT" tone="teal">
+        <Row style={{ alignItems: "center", gap: 12 }}>
+          <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
+          <View style={{ flex: 1, gap: 2 }}>
+            <Text style={styles.optTitle}>Auth setup pending</Text>
+            <Text style={styles.optDesc}>{hasSupabaseConfig ? "Supabase SDK did not load." : "Add your Supabase URL and publishable key."}</Text>
+          </View>
+        </Row>
+      </Module>
+    );
+  }
+
+  if (!authReady) {
+    return (
+      <Module label="ACCOUNT" tone="teal">
+        <Text style={styles.authNotice}>Checking session...</Text>
+      </Module>
+    );
+  }
+
+  if (user) {
+    const displayEmail = user.email || "Signed in";
+    return (
+      <Module label="ACCOUNT" tone="teal" right={<Text style={styles.authPill}>SIGNED IN</Text>}>
+        <Row style={{ alignItems: "center", gap: 12 }}>
+          <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
+          <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+            <Text style={styles.authEmail}>{displayEmail}</Text>
+            <Text style={styles.optDesc}>Scores save under this account on this device</Text>
+          </View>
+        </Row>
+        <Touchable type="button" className="press" onPress={handleSignOut} disabled={busy} style={[styles.secondaryBtn, busy && styles.disabledBtn]}>
+          <Icon name="logOut" size={17} color={T.navy} stroke={2.4} />
+          <Text style={styles.secondaryTxt}>{busy ? "Working..." : "Sign Out"}</Text>
+        </Touchable>
+        {notice && <Text style={styles.authNotice}>{notice}</Text>}
+      </Module>
+    );
+  }
+
+  return (
+    <Module label="ACCOUNT" tone="teal">
+      <Row style={styles.segWrap}>
+        <Touchable type="button" onPress={() => setMode("signIn")} style={[styles.seg, mode === "signIn" && styles.segOn]}>
+          <Text style={[styles.segLabel, mode === "signIn" && styles.segLabelOn]}>Sign In</Text>
+        </Touchable>
+        <Touchable type="button" onPress={() => setMode("signUp")} style={[styles.seg, mode === "signUp" && styles.segOn]}>
+          <Text style={[styles.segLabel, mode === "signUp" && styles.segLabelOn]}>Sign Up</Text>
+        </Touchable>
+      </Row>
+
+      <Touchable type="button" className="press" onPress={handleGoogleAuth} disabled={busy} style={[styles.authGoogleBtn, busy && styles.disabledBtn]}>
+        <Icon name="google" size={22} />
+        <Text style={styles.secondaryTxt}>Continue with Google</Text>
+      </Touchable>
+
+      <View style={styles.authDivider}>
+        <View style={styles.authDividerLine} />
+        <Text style={styles.authDividerTxt}>OR</Text>
+        <View style={styles.authDividerLine} />
+      </View>
+
+      <input
+        aria-label="Email"
+        autoComplete="email"
+        inputMode="email"
+        placeholder="email@example.com"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleEmailAuth(); }}
+        style={styles.authInput}
+      />
+      <input
+        aria-label="Password"
+        autoComplete={mode === "signUp" ? "new-password" : "current-password"}
+        placeholder="password"
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") handleEmailAuth(); }}
+        style={styles.authInput}
+      />
+      <Touchable type="button" className="press" onPress={handleEmailAuth} disabled={busy || !emailReady} style={[styles.primaryBtn, (busy || !emailReady) && styles.disabledBtn]}>
+        <Icon name={mode === "signUp" ? "user" : "arrowRight"} size={17} color={T.onRed} stroke={2.4} />
+        <Text style={styles.primaryTxt}>{busy ? "Working..." : mode === "signUp" ? "Create Account" : "Sign In"}</Text>
+      </Touchable>
+      {notice && <Text style={styles.authNotice}>{notice}</Text>}
+    </Module>
+  );
+}
+
 /* ---------- HOME ----------------------------------------------------------- */
 function Home({ config, setConfig, onStart, bestScores }) {
   const set = (k, v) => setConfig((c) => ({ ...c, [k]: v }));
@@ -307,14 +593,7 @@ function Home({ config, setConfig, onStart, bestScores }) {
 
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
-      <View style={styles.header}>
-        <View style={styles.brandBadge}><Icon name="globe" size={26} color={T.onNavy} stroke={2} /></View>
-        <View style={{ gap: 3 }}>
-          <Text style={styles.kicker}>FLAG QUIZ</Text>
-          <Text style={styles.brandName}>WORLD FLAGS</Text>
-        </View>
-      </View>
-      <View style={styles.headerRule} />
+      <AppHeader kicker="QUIZ" title="WORLD FLAGS" />
 
       <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 16 }}>
         <Module label="QUIZ MODE">
@@ -336,36 +615,17 @@ function Home({ config, setConfig, onStart, bestScores }) {
         </Module>
 
         <Module label="REGION">
-          <Row style={{ flexWrap: "wrap", gap: 8 }}>
-            {SCOPES.map((s) => {
-              const on = config.scope === s.key;
-              return (
-                <Touchable key={s.key} className="press" onPress={() => set("scope", s.key)} style={[styles.regionCell, on && styles.regionCellOn]}>
-                  <View style={styles.regionGlyph}><Icon name={s.icon} size={20} color={T.navy} stroke={2} /></View>
-                  <View style={{ flex: 1, gap: 1 }}>
-                    <Text style={styles.regionName}>{s.label}</Text>
-                    <Text style={styles.regionCount}>{REGION_COUNT[s.key]} FLAGS</Text>
-                  </View>
-                </Touchable>
-              );
-            })}
-          </Row>
+          <RegionGrid value={config.scope} onChange={(scope) => set("scope", scope)} />
         </Module>
 
         <Module label="DIFFICULTY">
-          <Row style={styles.segWrap}>
-            {DIFFS.map((d) => {
-              const on = config.difficulty === d.key;
-              return (
-                <Touchable key={d.key} onPress={() => set("difficulty", d.key)} style={[styles.seg, on && styles.segOn]}>
-                  <Text style={[styles.segLabel, on && styles.segLabelOn]}>{d.label}</Text>
-                </Touchable>
-              );
-            })}
-          </Row>
-          <Text style={styles.hint}>{config.scope === "similar"
-            ? "SIMILAR FLAGS USES LOOK-ALIKE FLAGS. DIFFICULTY SETS HOW MANY CHOICES APPEAR."
-            : activeDiff.desc.toUpperCase()}</Text>
+          <DifficultyTabs
+            value={config.difficulty}
+            onChange={(difficulty) => set("difficulty", difficulty)}
+            hint={config.scope === "similar"
+              ? "SIMILAR FLAGS USES LOOK-ALIKE FLAGS. DIFFICULTY SETS HOW MANY CHOICES APPEAR."
+              : activeDiff.desc.toUpperCase()}
+          />
         </Module>
 
         <Module label="GAME MODE">
@@ -381,17 +641,6 @@ function Home({ config, setConfig, onStart, bestScores }) {
               );
             })}
           </Row>
-        </Module>
-
-        <Module label="PRACTICE">
-          <Touchable onPress={() => set("srs", !config.srs)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <View style={styles.optIcon}><Icon name="layers" size={20} color={T.navy} stroke={2} /></View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.optTitle}>Smart Practice</Text>
-              <Text style={styles.optDesc}>Rate recall so tricky flags appear more often</Text>
-            </View>
-            <View style={[styles.switch, config.srs && styles.switchOn]}><View style={[styles.knob, config.srs && styles.knobOn]} /></View>
-          </Touchable>
         </Module>
 
         {best != null && (
@@ -415,11 +664,209 @@ function Home({ config, setConfig, onStart, bestScores }) {
   );
 }
 
+function Learn({ srsWeights, onReview }) {
+  const [learnConfig, setLearnConfig] = useState({ scope: "world", difficulty: "medium" });
+  const recent = useRef([]);
+  const makeCard = (weights = srsWeights) => {
+    const pool = getStudyPool(learnConfig);
+    const next = weightedPick(pool, weights, recent.current);
+    recent.current = [next.code, ...recent.current].slice(0, 12);
+    return next;
+  };
+  const [card, setCard] = useState(() => makeCard());
+  const [revealed, setRevealed] = useState(false);
+  const activeDiff = DIFFS.find((d) => d.key === learnConfig.difficulty);
+  const poolCount = getStudyPool(learnConfig).length;
+
+  useEffect(() => {
+    recent.current = [];
+    setCard(makeCard());
+    setRevealed(false);
+  }, [learnConfig.scope, learnConfig.difficulty]);
+
+  const set = (k, v) => setLearnConfig((c) => ({ ...c, [k]: v }));
+
+  const review = (rating) => {
+    if (!card) return;
+    const multipliers = { tricky: 1.8, good: 0.7, easy: 0.35 };
+    const current = srsWeights[card.code] || 1;
+    const nextWeight = Math.max(0.1, Math.min(10, current * multipliers[rating]));
+    const nextWeights = { ...srsWeights, [card.code]: nextWeight };
+    onReview(card, rating, learnConfig);
+    setCard(makeCard(nextWeights));
+    setRevealed(false);
+  };
+
+  return (
+    <View style={{ flex: 1, minHeight: 0 }}>
+      <AppHeader kicker="LEARN" title="FLASHCARDS" />
+      <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 16 }}>
+        <Module label="REGION">
+          <RegionGrid value={learnConfig.scope} onChange={(scope) => set("scope", scope)} />
+        </Module>
+
+        <Module label="DIFFICULTY">
+          <DifficultyTabs
+            value={learnConfig.difficulty}
+            onChange={(difficulty) => set("difficulty", difficulty)}
+            hint={learnConfig.scope === "similar"
+              ? "SIMILAR FLAGS DRILLS LOOK-ALIKE FLAGS."
+              : `${activeDiff.desc.toUpperCase()} // ${poolCount} CARDS`}
+          />
+        </Module>
+
+        <Module label="FLASHCARD" tone={revealed ? "teal" : "navy"} right={<Text style={styles.authPill}>{poolCount}</Text>}>
+          <View style={styles.flashStage}>
+            <View style={[styles.flashInner, revealed && styles.flashInnerOn]}>
+              <View style={styles.flashFace}>
+                <Text style={styles.prompt}>NAME THIS FLAG</Text>
+                <View style={styles.flashFlagFrame}><Img uri={flagUrl(card.code, 640)} style={styles.heroFlag} /></View>
+              </View>
+              <View style={[styles.flashFace, styles.flashBack]}>
+                <Text style={styles.prompt}>ANSWER</Text>
+                <Text style={styles.flashName}>{card.name}</Text>
+                <View style={styles.flashMiniFlag}><Img uri={flagUrl(card.code, 320)} style={styles.tileImg} /></View>
+              </View>
+            </View>
+          </View>
+
+          {!revealed ? (
+            <Touchable className="press" onPress={() => setRevealed(true)} style={styles.primaryBtn}>
+              <Icon name="arrowRight" size={17} color={T.onRed} stroke={2.4} />
+              <Text style={styles.primaryTxt}>Reveal</Text>
+            </Touchable>
+          ) : (
+            <View style={styles.confWrap} className="popIn">
+              <Text style={styles.confLabel}>CONFIDENCE</Text>
+              <Row style={{ gap: 9 }}>
+                <Touchable className="press" onPress={() => review("tricky")} style={[styles.confBtn, { background: T.redSoft }]}>
+                  <Text style={styles.confTxt}>TRICKY</Text><Text style={styles.confSub}>soon</Text>
+                </Touchable>
+                <Touchable className="press" onPress={() => review("good")} style={[styles.confBtn, { background: T.blueFixed }]}>
+                  <Text style={styles.confTxt}>GOOD</Text><Text style={styles.confSub}>later</Text>
+                </Touchable>
+                <Touchable className="press" onPress={() => review("easy")} style={[styles.confBtn, { background: T.tealFixed }]}>
+                  <Text style={styles.confTxt}>EASY</Text><Text style={styles.confSub}>rarely</Text>
+                </Touchable>
+              </Row>
+            </View>
+          )}
+        </Module>
+        <View style={{ height: 20 }} />
+      </Scroll>
+    </View>
+  );
+}
+
+function Account({ session, authReady, quizHistory, reviewHistory, srsWeights }) {
+  const user = session && session.user;
+  const recentRuns = quizHistory.filter((run) => run.ts >= weekAgo());
+  const recentReviews = reviewHistory.filter((review) => review.ts >= weekAgo());
+  const uniqueReviewed = new Set(reviewHistory.map((review) => review.code)).size;
+  const ratings = reviewHistory.reduce((acc, review) => {
+    acc[review.rating] = (acc[review.rating] || 0) + 1;
+    return acc;
+  }, {});
+  const memoryScore = reviewHistory.length
+    ? Math.round(((ratings.easy || 0) + (ratings.good || 0) * 0.72 + (ratings.tricky || 0) * 0.28) / reviewHistory.length * 100)
+    : 0;
+  const strongCount = Object.values(srsWeights).filter((w) => w <= 0.75).length;
+  const reviewCount = Object.values(srsWeights).filter((w) => w >= 2).length;
+  const watchList = Object.entries(srsWeights)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([code, weight]) => ({ country: BY_CODE[code], weight }))
+    .filter((item) => item.country);
+  const avgWeight = Math.round(avg(Object.values(srsWeights)) * 10) / 10 || 0;
+
+  return (
+    <View style={{ flex: 1, minHeight: 0 }}>
+      <AppHeader kicker="ACCOUNT" title="PROFILE" />
+      <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 16 }}>
+        <AuthPanel session={session} authReady={authReady} />
+
+        <Module label="ACCURACY">
+          <Row style={{ gap: 9 }}>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.navy }]}>{calcAccuracy(quizHistory)}<Text style={styles.statUnit}>%</Text></Text>
+              <Text style={styles.statLbl}>LIFETIME</Text>
+            </View>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.red }]}>{calcAccuracy(recentRuns)}<Text style={styles.statUnit}>%</Text></Text>
+              <Text style={styles.statLbl}>7 DAYS</Text>
+            </View>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.teal }]}>{quizHistory.length}</Text>
+              <Text style={styles.statLbl}>QUIZZES</Text>
+            </View>
+          </Row>
+        </Module>
+
+        <Module label="MEMORY" tone="teal">
+          <Row style={{ gap: 9 }}>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.teal }]}>{memoryScore}<Text style={styles.statUnit}>%</Text></Text>
+              <Text style={styles.statLbl}>RECALL</Text>
+            </View>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.navy }]}>{uniqueReviewed}</Text>
+              <Text style={styles.statLbl}>SEEN</Text>
+            </View>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.red }]}>{recentReviews.length}</Text>
+              <Text style={styles.statLbl}>THIS WEEK</Text>
+            </View>
+          </Row>
+          <Row style={{ gap: 9 }}>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.teal }]}>{strongCount}</Text>
+              <Text style={styles.statLbl}>STRONG</Text>
+            </View>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.red }]}>{reviewCount}</Text>
+              <Text style={styles.statLbl}>REVIEW</Text>
+            </View>
+            <View style={[styles.statBox, { flex: 1 }]}>
+              <Text style={[styles.statBig, { color: T.navy }]}>{avgWeight}</Text>
+              <Text style={styles.statLbl}>LOAD</Text>
+            </View>
+          </Row>
+        </Module>
+
+        <Module label="EMAIL INFO">
+          <Row style={{ alignItems: "center", gap: 12 }}>
+            <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
+            <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+              <Text style={styles.authEmail}>{user && user.email ? user.email : "GUEST PROFILE"}</Text>
+              <Text style={styles.optDesc}>{user ? `Last sign-in: ${user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "available after next login"}` : "Sign in to keep separate local progress for your profile."}</Text>
+            </View>
+          </Row>
+        </Module>
+
+        <Module label="WATCH LIST" tone="red">
+          {watchList.length ? watchList.map((item) => (
+            <Row key={item.country.code} style={styles.revRow}>
+              <View style={styles.revFlag}><Img uri={flagUrl(item.country.code, 80)} style={styles.revFlagImg} /></View>
+              <View style={{ flex: 1, gap: 1 }}>
+                <Text style={[styles.revName, { color: T.red }]}>{item.country.name}</Text>
+                <Text style={[styles.revStatus, { color: T.red }]}>MEMORY LOAD {Math.round(item.weight * 10) / 10}</Text>
+              </View>
+            </Row>
+          )) : (
+            <Text style={styles.authNotice}>No flashcard reviews yet.</Text>
+          )}
+        </Module>
+        <View style={{ height: 20 }} />
+      </Scroll>
+    </View>
+  );
+}
+
 /* ---------- QUIZ ----------------------------------------------------------- */
-function Quiz({ config, onFinish, onQuit, srsWeights, onSrsUpdate }) {
+function Quiz({ config, onFinish, onQuit }) {
   const recent = useRef([]);
   const [question, setQuestion] = useState(() => {
-    const q = makeQuestion(config, [], config.srs ? srsWeights : {});
+    const q = makeQuestion(config, []);
     recent.current = [q.target.code];
     return q;
   });
@@ -429,7 +876,6 @@ function Quiz({ config, onFinish, onQuit, srsWeights, onSrsUpdate }) {
   const [selected, setSelected] = useState(null);
   const [timeLeft, setTimeLeft] = useState(60);
   const [tick, setTick] = useState(0);
-  const [showConfidence, setShowConfidence] = useState(false);
 
   const answersRef = useRef([]); const scoreRef = useRef(0); const done = useRef(false);
   useEffect(() => { answersRef.current = answers; }, [answers]);
@@ -449,19 +895,9 @@ function Quiz({ config, onFinish, onQuit, srsWeights, onSrsUpdate }) {
   }, [timeLeft, config.mode]);
 
   const next = () => {
-    const q = makeQuestion(config, recent.current, config.srs ? srsWeights : {});
+    const q = makeQuestion(config, recent.current);
     recent.current = [q.target.code, ...recent.current].slice(0, 10);
-    setQuestion(q); setSelected(null); setShowConfidence(false); setTick((t) => t + 1);
-  };
-
-  const handleConfidence = (level) => {
-    const multipliers = { hard: 1.8, good: 0.6, easy: 0.3 };
-    onSrsUpdate(question.target.code, multipliers[level]);
-    setShowConfidence(false);
-    answersRef.current = answers; scoreRef.current = score;
-    if (config.mode === "classic" && answers.length >= CLASSIC_TOTAL) return finish();
-    if (config.mode === "timeAttack" && timeLeft <= 0) return finish();
-    next();
+    setQuestion(q); setSelected(null); setTick((t) => t + 1);
   };
 
   const answer = (country) => {
@@ -475,18 +911,13 @@ function Quiz({ config, onFinish, onQuit, srsWeights, onSrsUpdate }) {
     const newLives = !correct && config.mode === "survival" ? lives - 1 : lives;
     if (newLives !== lives) setLives(newLives);
 
-    if (correct && config.srs) {
-      setShowConfidence(true);
-    } else {
-      if (!correct && config.srs) onSrsUpdate(question.target.code, 2.5);
-      setTimeout(() => {
-        answersRef.current = newAnswers; scoreRef.current = newScore;
-        if (config.mode === "classic" && newAnswers.length >= CLASSIC_TOTAL) return finish();
-        if (config.mode === "survival" && newLives <= 0) return finish();
-        if (config.mode === "timeAttack" && timeLeft <= 0) return finish();
-        next();
-      }, 820);
-    }
+    setTimeout(() => {
+      answersRef.current = newAnswers; scoreRef.current = newScore;
+      if (config.mode === "classic" && newAnswers.length >= CLASSIC_TOTAL) return finish();
+      if (config.mode === "survival" && newLives <= 0) return finish();
+      if (config.mode === "timeAttack" && timeLeft <= 0) return finish();
+      next();
+    }, 820);
   };
 
   const optColor = (c) => {
@@ -579,26 +1010,9 @@ function Quiz({ config, onFinish, onQuit, srsWeights, onSrsUpdate }) {
             </React.Fragment>
           )}
 
-          {selected && !showConfidence && (
+          {selected && (
             <View style={[styles.feedbackBox, { background: selected.code === question.target.code ? T.teal : T.red }]}>
               <Text style={styles.feedbackTxt}>{selected.code === question.target.code ? "CORRECT" : `INCORRECT - ${question.target.name.toUpperCase()}`}</Text>
-            </View>
-          )}
-
-          {showConfidence && (
-            <View style={styles.confWrap} className="popIn">
-              <Text style={styles.confLabel}>RATE THIS FLAG</Text>
-              <Row style={{ gap: 9 }}>
-                <Touchable className="press" onPress={() => handleConfidence("hard")} style={[styles.confBtn, { background: T.redSoft }]}>
-                  <Text style={styles.confTxt}>TRICKY</Text><Text style={styles.confSub}>soon</Text>
-                </Touchable>
-                <Touchable className="press" onPress={() => handleConfidence("good")} style={[styles.confBtn, { background: T.blueFixed }]}>
-                  <Text style={styles.confTxt}>GOOD</Text><Text style={styles.confSub}>later</Text>
-                </Touchable>
-                <Touchable className="press" onPress={() => handleConfidence("easy")} style={[styles.confBtn, { background: T.tealFixed }]}>
-                  <Text style={styles.confTxt}>EASY</Text><Text style={styles.confSub}>rarely</Text>
-                </Touchable>
-              </Row>
             </View>
           )}
         </div>
@@ -703,16 +1117,71 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
 
 /* ---------- APP ------------------------------------------------------------ */
 function App() {
-  const [screen, setScreen] = useState("home");
-  const [config, setConfig] = useState({ type: "flagToName", scope: "world", difficulty: "medium", mode: "classic", srs: false });
+  const [tab, setTab] = useState("learn");
+  const [quizScreen, setQuizScreen] = useState("home");
+  const [config, setConfig] = useState({ type: "flagToName", scope: "world", difficulty: "medium", mode: "classic" });
   const [result, setResult] = useState(null);
   const [isNewBest, setIsNewBest] = useState(false);
   const [bestScores, setBestScores] = useState({}); // -> AsyncStorage on Expo
   const [srsWeights, setSrsWeights] = useState({});
+  const [quizHistory, setQuizHistory] = useState([]);
+  const [reviewHistory, setReviewHistory] = useState([]);
   const [runId, setRunId] = useState(0);
+  const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(!supabaseClient);
+  const [storageReady, setStorageReady] = useState(false);
+  const loadedStorageKey = useRef(null);
 
-  const start = () => { setRunId((r) => r + 1); setScreen("quiz"); };
-  const again = () => { setRunId((r) => r + 1); setScreen("quiz"); };
+  useEffect(() => {
+    if (!supabaseClient) return;
+    let mounted = true;
+    supabaseClient.auth.getSession()
+      .then(({ data }) => {
+        if (!mounted) return;
+        setSession(data.session);
+        setAuthReady(true);
+      })
+      .catch(() => setAuthReady(true));
+    const { data } = supabaseClient.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession);
+      setAuthReady(true);
+    });
+    return () => {
+      mounted = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  const storageKey = `world-flags:${session && session.user ? session.user.id : "guest"}`;
+
+  useEffect(() => {
+    setStorageReady(false);
+    try {
+      const raw = window.localStorage.getItem(storageKey);
+      const saved = raw ? JSON.parse(raw) : {};
+      setBestScores(saved.bestScores || {});
+      setSrsWeights(saved.srsWeights || {});
+      setQuizHistory(saved.quizHistory || []);
+      setReviewHistory(saved.reviewHistory || []);
+    } catch (_err) {
+      setBestScores({});
+      setSrsWeights({});
+      setQuizHistory([]);
+      setReviewHistory([]);
+    }
+    loadedStorageKey.current = storageKey;
+    setStorageReady(true);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageReady || loadedStorageKey.current !== storageKey) return;
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify({ bestScores, srsWeights, quizHistory, reviewHistory }));
+    } catch (_err) {}
+  }, [storageReady, storageKey, bestScores, srsWeights, quizHistory, reviewHistory]);
+
+  const start = () => { setRunId((r) => r + 1); setQuizScreen("quiz"); setTab("quiz"); };
+  const again = () => { setRunId((r) => r + 1); setQuizScreen("quiz"); setTab("quiz"); };
 
   const updateSrs = (code, multiplier) => {
     setSrsWeights((w) => {
@@ -722,22 +1191,52 @@ function App() {
     });
   };
 
+  const handleFlashcardReview = (country, rating, learnConfig) => {
+    const multipliers = { tricky: 1.8, good: 0.7, easy: 0.35 };
+    updateSrs(country.code, multipliers[rating]);
+    setReviewHistory((history) => [{
+      ts: Date.now(),
+      code: country.code,
+      rating,
+      scope: learnConfig.scope,
+      difficulty: learnConfig.difficulty,
+    }, ...history].slice(0, 1000));
+  };
+
   const handleFinish = (r) => {
     const key = `${config.type}|${config.scope}|${config.difficulty}|${config.mode}`;
     const prev = bestScores[key];
     const newBest = (prev == null || r.score > prev) && r.total > 0;
     if (newBest) setBestScores((b) => ({ ...b, [key]: r.score }));
+    setQuizHistory((history) => [{
+      ts: Date.now(),
+      score: r.score,
+      total: r.total,
+      type: config.type,
+      scope: config.scope,
+      difficulty: config.difficulty,
+      mode: config.mode,
+    }, ...history].slice(0, 500));
     setIsNewBest(newBest);
     setResult(r);
-    setScreen("results");
+    setQuizScreen("results");
   };
+
+  const content = tab === "learn"
+    ? <Learn srsWeights={srsWeights} onReview={handleFlashcardReview} />
+    : tab === "account"
+      ? <Account session={session} authReady={authReady} quizHistory={quizHistory} reviewHistory={reviewHistory} srsWeights={srsWeights} />
+      : quizScreen === "quiz"
+        ? <Quiz key={runId} config={config} onFinish={handleFinish} onQuit={() => setQuizScreen("home")} />
+        : quizScreen === "results"
+          ? <Results result={result} isNewBest={isNewBest} config={config} onAgain={again} onHome={() => setQuizScreen("home")} />
+          : <Home config={config} setConfig={setConfig} onStart={start} bestScores={bestScores} />;
 
   return (
     <View style={styles.outer}>
       <View style={styles.app}>
-        {screen === "home" && <Home config={config} setConfig={setConfig} onStart={start} bestScores={bestScores} />}
-        {screen === "quiz" && <Quiz key={runId} config={config} onFinish={handleFinish} onQuit={() => setScreen("home")} srsWeights={srsWeights} onSrsUpdate={updateSrs} />}
-        {screen === "results" && <Results result={result} isNewBest={isNewBest} config={config} onAgain={again} onHome={() => setScreen("home")} />}
+        <View style={styles.mainPane}>{content}</View>
+        <BottomNav active={tab} onChange={setTab} />
       </View>
     </View>
   );
@@ -753,6 +1252,12 @@ const styles = {
     fontFamily: T.fontBody, color: T.ink,
     border: `3px solid ${T.navy}`, boxShadow: "8px 8px 0 rgba(0,0,0,0.35)",
   },
+  mainPane: { flex: 1, minHeight: 0 },
+  navBar: { flexDirection: "row", gap: 8, padding: 12, paddingTop: 10, background: T.bg, borderTop: `2px solid ${T.navy}` },
+  navItem: { flex: 1, minWidth: 0, height: 52, alignItems: "center", justifyContent: "center", gap: 3, background: T.panel, borderRadius: 8, border: `2px solid ${T.navy}`, boxShadow: SH_SM },
+  navItemOn: { background: T.navy, boxShadow: `3px 3px 0 ${T.red}` },
+  navTxt: { fontFamily: T.fontMono, fontSize: 10.5, fontWeight: 700, color: T.navy, textTransform: "uppercase", letterSpacing: 0.8 },
+  navTxtOn: { color: T.onNavy },
 
   header: { flexDirection: "row", alignItems: "center", gap: 12, paddingTop: 18, paddingBottom: 12, paddingLeft: 18, paddingRight: 18 },
   brandBadge: { width: 46, height: 46, borderRadius: 9, background: T.navy, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center", boxShadow: `3px 3px 0 ${T.red}` },
@@ -792,14 +1297,20 @@ const styles = {
   modeTitle: { fontFamily: T.fontDisplay, fontSize: 12.5, fontWeight: 800, color: T.navy, textTransform: "uppercase" },
   modeDesc: { fontFamily: T.fontMono, fontSize: 9.5, color: T.inkDim, textAlign: "center" },
 
-  switch: { width: 50, height: 28, borderRadius: 14, background: T.white, border: `2px solid ${T.navy}`, justifyContent: "center", padding: 2, boxShadow: INSET },
-  switchOn: { background: T.teal },
-  knob: { width: 20, height: 20, borderRadius: 10, background: T.navy, transition: "transform .2s, background .2s" },
-  knobOn: { transform: "translateX(22px)", background: T.tealFixed },
-
   bestRow: { flexDirection: "row", alignItems: "center", gap: 9, background: T.tealFixed, borderRadius: 9, border: `2px solid ${T.navy}`, paddingTop: 11, paddingBottom: 11, paddingLeft: 13, paddingRight: 13, boxShadow: SH_SM },
   bestLabel: { fontFamily: T.fontMono, fontSize: 11.5, fontWeight: 700, color: T.navy, letterSpacing: 0.8 },
   bestValue: { fontFamily: T.fontDisplay, fontSize: 20, fontWeight: 900, color: T.navy },
+
+  authAvatar: { width: 42, height: 42, borderRadius: 21, background: T.navy, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
+  authPill: { fontFamily: T.fontMono, fontSize: 10, fontWeight: 700, color: T.onNavy, letterSpacing: 1 },
+  authEmail: { fontFamily: T.fontDisplay, fontSize: 15, fontWeight: 800, color: T.navy, textTransform: "uppercase", overflowWrap: "anywhere" },
+  authInput: { width: "100%", minHeight: 46, borderRadius: 8, border: `2px solid ${T.navy}`, background: T.white, color: T.ink, padding: "0 12px", fontFamily: T.fontBody, fontSize: 15, fontWeight: 600, outline: "none", boxShadow: INSET },
+  authGoogleBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, background: T.white, borderRadius: 8, border: `2px solid ${T.navy}`, paddingTop: 13, paddingBottom: 13, boxShadow: SH },
+  authDivider: { flexDirection: "row", alignItems: "center", gap: 9 },
+  authDividerLine: { flex: 1, height: 2, background: T.outlineVar },
+  authDividerTxt: { fontFamily: T.fontMono, fontSize: 10, fontWeight: 700, color: T.inkDim, letterSpacing: 1.3 },
+  authNotice: { fontFamily: T.fontMono, fontSize: 11, color: T.inkDim, lineHeight: 1.45, letterSpacing: 0.2 },
+  disabledBtn: { opacity: 0.58, boxShadow: `2px 2px 0 ${T.navy}` },
 
   footer: { padding: 16, paddingTop: 12, background: T.bg, borderTop: `2px solid ${T.navy}` },
   primaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, background: T.red, borderRadius: 8, border: `2px solid ${T.navy}`, paddingTop: 15, paddingBottom: 15, boxShadow: SH },
@@ -840,6 +1351,15 @@ const styles = {
 
   feedbackBox: { borderRadius: 7, border: `2px solid ${T.navy}`, paddingTop: 9, paddingBottom: 9, paddingLeft: 18, paddingRight: 18, boxShadow: SH_SM },
   feedbackTxt: { fontFamily: T.fontMono, fontSize: 13.5, fontWeight: 700, color: "#fff", letterSpacing: 1, textTransform: "uppercase" },
+
+  flashStage: { width: "100%", height: 286, perspective: 1000 },
+  flashInner: { width: "100%", height: "100%", position: "relative", transformStyle: "preserve-3d", transition: "transform .42s cubic-bezier(.2,.7,.3,1)" },
+  flashInnerOn: { transform: "rotateY(180deg)" },
+  flashFace: { position: "absolute", inset: 0, background: T.white, border: `3px solid ${T.navy}`, borderRadius: 10, boxShadow: SH_LG, padding: 16, alignItems: "center", justifyContent: "center", gap: 16, backfaceVisibility: "hidden" },
+  flashBack: { transform: "rotateY(180deg)", background: T.tealFixed },
+  flashFlagFrame: { width: "100%", maxWidth: 305, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 8 },
+  flashName: { fontFamily: T.fontDisplay, fontSize: 30, fontWeight: 900, color: T.navy, textAlign: "center", lineHeight: 1.05, textTransform: "uppercase" },
+  flashMiniFlag: { width: 112, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 5, padding: 5, boxShadow: SH_SM },
 
   confWrap: { width: "100%", gap: 9, marginTop: 4, alignItems: "center" },
   confLabel: { fontFamily: T.fontMono, fontSize: 11, fontWeight: 700, color: T.inkDim, letterSpacing: 1.2 },
