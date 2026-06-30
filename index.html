@@ -592,11 +592,6 @@ function AuthPanel({ session, authReady, onGuest }) {
         <Icon name="flag" size={17} color={T.navy} stroke={2.4} />
         <Text style={styles.secondaryTxt}>Play as Guest</Text>
       </Touchable>
-      <Row style={styles.authLinks}>
-        <a href="./privacy.html" target="_blank" rel="noreferrer" style={styles.authLink}>Privacy</a>
-        <Text style={styles.authNotice}>//</Text>
-        <a href="./terms.html" target="_blank" rel="noreferrer" style={styles.authLink}>Terms</a>
-      </Row>
       {notice && <Text style={styles.authNotice}>{notice}</Text>}
     </Module>
   );
@@ -802,15 +797,17 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, s
       <AppHeader kicker="ACCOUNT" title="PROFILE" />
       <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 16 }}>
         <AuthPanel session={session} authReady={authReady} onGuest={onGuest} />
-        <Module label="SYNC" tone={user ? "teal" : "navy"}>
-          <Row style={{ alignItems: "center", gap: 12 }}>
-            <View style={styles.authAvatar}><Icon name={user ? "check" : "flag"} size={20} color={T.onNavy} stroke={2.4} /></View>
-            <View style={{ flex: 1, gap: 2 }}>
-              <Text style={styles.optTitle}>{user ? "Database Sync" : "Guest Mode"}</Text>
-              <Text style={styles.optDesc}>{user ? syncStatus : "You can play without an account. Guest stats stay on this browser only until you sign in."}</Text>
-            </View>
-          </Row>
-        </Module>
+        {user && (
+          <Module label="SYNC" tone="teal">
+            <Row style={{ alignItems: "center", gap: 12 }}>
+              <View style={styles.authAvatar}><Icon name="check" size={20} color={T.onNavy} stroke={2.4} /></View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.optTitle}>Database Sync</Text>
+                <Text style={styles.optDesc}>{syncStatus}</Text>
+              </View>
+            </Row>
+          </Module>
+        )}
 
         <Module label="ACCURACY">
           <Row style={{ gap: 9 }}>
@@ -860,15 +857,17 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, s
           </Row>
         </Module>
 
-        <Module label="EMAIL INFO">
-          <Row style={{ alignItems: "center", gap: 12 }}>
-            <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
-            <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-              <Text style={styles.authEmail}>{user && user.email ? user.email : "GUEST PROFILE"}</Text>
-              <Text style={styles.optDesc}>{user ? `Last sign-in: ${user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "available after next login"}` : "Sign in to keep separate local progress for your profile."}</Text>
-            </View>
-          </Row>
-        </Module>
+        {user && (
+          <Module label="EMAIL INFO">
+            <Row style={{ alignItems: "center", gap: 12 }}>
+              <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
+              <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+                <Text style={styles.authEmail}>{user.email || "SIGNED IN"}</Text>
+                <Text style={styles.optDesc}>{`Last sign-in: ${user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "available after next login"}`}</Text>
+              </View>
+            </Row>
+          </Module>
+        )}
 
         <Module label="WATCH LIST" tone="red">
           {watchList.length ? watchList.map((item) => (
@@ -883,6 +882,11 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, s
             <Text style={styles.authNotice}>No flashcard reviews yet.</Text>
           )}
         </Module>
+        <Row style={styles.legalLinks}>
+          <a href="./privacy.html" target="_blank" rel="noreferrer" style={styles.legalLink}>Privacy</a>
+          <Text style={styles.legalSep}>/</Text>
+          <a href="./terms.html" target="_blank" rel="noreferrer" style={styles.legalLink}>Terms</a>
+        </Row>
         <View style={{ height: 20 }} />
       </Scroll>
     </View>
@@ -1410,8 +1414,9 @@ const styles = {
   authDividerLine: { flex: 1, height: 2, background: T.outlineVar },
   authDividerTxt: { fontFamily: T.fontMono, fontSize: 10, fontWeight: 700, color: T.inkDim, letterSpacing: 1.3 },
   authNotice: { fontFamily: T.fontMono, fontSize: 11, color: T.inkDim, lineHeight: 1.45, letterSpacing: 0.2 },
-  authLinks: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  authLink: { fontFamily: T.fontMono, fontSize: 11, fontWeight: 700, color: T.navy, letterSpacing: 1, textTransform: "uppercase", textDecoration: "underline" },
+  legalLinks: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingTop: 2, paddingBottom: 4 },
+  legalLink: { fontFamily: T.fontMono, fontSize: 10.5, fontWeight: 700, color: T.outline, letterSpacing: 0.8, textTransform: "uppercase", textDecoration: "underline" },
+  legalSep: { fontFamily: T.fontMono, fontSize: 10.5, color: T.outlineVar },
   disabledBtn: { opacity: 0.58, boxShadow: `2px 2px 0 ${T.navy}` },
 
   footer: { padding: 16, paddingTop: 12, background: T.bg, borderTop: `2px solid ${T.navy}` },
