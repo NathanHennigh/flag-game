@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>World Flags — Flag Quiz</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23003650'/%3E%3Cpath d='M9 25V7h13l-3 5 3 5H9' fill='%23fd6951'/%3E%3C/svg%3E" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23003650'/%3E%3Ccircle cx='16' cy='16' r='10' fill='%23fff3d5'/%3E%3Cpath d='M6.5 16h19M16 6c-3 3-4.2 6.2-4.2 10S13 23 16 26M16 6c3 3 4.2 6.2 4.2 10S19 23 16 26' fill='none' stroke='%23003650' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://flagcdn.com" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -160,6 +160,10 @@ function Icon({ name, size = 24, color = "currentColor", stroke = 2, style }) {
   };
   if (CONT[name]) return (<svg {...base} stroke="none"><path d={CONT[name]} fill={color} /></svg>);
   switch (name) {
+    case "atlasLogo": return (<svg {...base} stroke="none">
+      <circle cx="12" cy="12" r="8.5" fill={T.panelLow} />
+      <path d="M4 12h16M12 3.5c-2.5 2.6-3.6 5.2-3.6 8.5s1.1 5.9 3.6 8.5M12 3.5c2.5 2.6 3.6 5.2 3.6 8.5s-1.1 5.9-3.6 8.5" fill="none" stroke={T.navy} strokeWidth="1.55" strokeLinecap="round" />
+    </svg>);
     case "globe": return (<svg {...base}>
       <circle cx="12" cy="12" r="9" /><ellipse cx="12" cy="12" rx="4" ry="9" />
       <path d="M3.4 9.3h17.2M3.4 14.7h17.2" />
@@ -503,7 +507,7 @@ function AppHeader({ kicker = "WORLD FLAGS", title }) {
   return (
     <React.Fragment>
       <View style={styles.header}>
-        <View style={styles.brandBadge}><Icon name="globe" size={26} color={T.onNavy} stroke={2} /></View>
+        <View style={styles.brandBadge}><Icon name="atlasLogo" size={31} /></View>
         <View style={{ gap: 3 }}>
           <Text style={styles.kicker}>{kicker}</Text>
           <Text style={styles.brandName}>{title}</Text>
