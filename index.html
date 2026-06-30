@@ -1062,61 +1062,62 @@ function Quiz({ config, onFinish, onQuit }) {
     if (c.code === selected.code) return "wrong";
     return null;
   };
+  const hardMode = config.difficulty === "hard";
 
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
-      <Row style={styles.qTop}>
-        <Touchable className="press" onPress={onQuit} style={styles.iconBtn}><Icon name="x" size={18} color={T.navy} stroke={2.6} /></Touchable>
+      <Row style={[styles.qTop, hardMode && styles.qTopCompact]}>
+        <Touchable className="press" onPress={onQuit} style={[styles.iconBtn, hardMode && styles.iconBtnCompact]}><Icon name="x" size={hardMode ? 16 : 18} color={T.navy} stroke={2.6} /></Touchable>
         <View style={{ flex: 1, alignItems: "center" }}>
-          {config.mode === "classic" && <Text style={styles.statusTxt}>QUESTION {String(answers.length + 1).padStart(2, "0")} / {CLASSIC_TOTAL}</Text>}
+          {config.mode === "classic" && <Text style={[styles.statusTxt, hardMode && styles.statusTxtCompact]}>QUESTION {String(answers.length + 1).padStart(2, "0")} / {CLASSIC_TOTAL}</Text>}
           {config.mode === "timeAttack" && (
             <Row style={{ alignItems: "center", gap: 7 }}>
-              <Icon name="stopwatch" size={17} color={timeLeft <= 10 ? T.red : T.navy} stroke={2.1} />
-              <Text style={[styles.statusTxt, timeLeft <= 10 && { color: T.red }]}>{fmtTime(timeLeft)}</Text>
+              <Icon name="stopwatch" size={hardMode ? 15 : 17} color={timeLeft <= 10 ? T.red : T.navy} stroke={2.1} />
+              <Text style={[styles.statusTxt, hardMode && styles.statusTxtCompact, timeLeft <= 10 && { color: T.red }]}>{fmtTime(timeLeft)}</Text>
             </Row>
           )}
           {config.mode === "survival" && (
             <Row style={{ gap: 6 }}>
               {[0, 1, 2].map((i) => (
-                <Icon key={i} name={i < lives ? "heartFilled" : "heart"} size={19} color={i < lives ? T.red : T.outlineVar} stroke={2} />
+                <Icon key={i} name={i < lives ? "heartFilled" : "heart"} size={hardMode ? 17 : 19} color={i < lives ? T.red : T.outlineVar} stroke={2} />
               ))}
             </Row>
           )}
         </View>
-        <View style={styles.scoreChip}><Text style={styles.scoreTxt}>{score}</Text></View>
+        <View style={[styles.scoreChip, hardMode && styles.scoreChipCompact]}><Text style={[styles.scoreTxt, hardMode && styles.scoreTxtCompact]}>{score}</Text></View>
       </Row>
 
       {config.mode === "classic" && (
-        <Row style={styles.progressTrack}>
+        <Row style={[styles.progressTrack, hardMode && styles.progressTrackCompact]}>
           {Array.from({ length: CLASSIC_TOTAL }).map((_, i) => (
-            <View key={i} style={[styles.progressSeg, i < answers.length && styles.progressSegOn]} />
+            <View key={i} style={[styles.progressSeg, hardMode && styles.progressSegCompact, i < answers.length && styles.progressSegOn]} />
           ))}
         </Row>
       )}
       {config.mode === "timeAttack" && (
-        <View style={styles.barTrack}><View style={[styles.barFill, { width: `${(timeLeft / 60) * 100}%`, background: timeLeft <= 10 ? T.red : T.navy }]} /></View>
+        <View style={[styles.barTrack, hardMode && styles.barTrackCompact]}><View style={[styles.barFill, { width: `${(timeLeft / 60) * 100}%`, background: timeLeft <= 10 ? T.red : T.navy }]} /></View>
       )}
 
-      <Scroll contentStyle={{ padding: 20, paddingTop: 22, gap: 20, alignItems: "center" }}>
-        <div key={tick} className="fadeIn" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}>
+      <Scroll contentStyle={{ padding: hardMode ? 14 : 20, paddingTop: hardMode ? 10 : 22, gap: hardMode ? 12 : 20, alignItems: "center" }}>
+        <div key={tick} className="fadeIn" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: hardMode ? 12 : 20 }}>
           {question.type === "flagToName" ? (
             <React.Fragment>
-              <Text style={styles.prompt}>IDENTIFY THE FLAG</Text>
-              <View style={styles.flagFrame}><Img uri={flagUrl(question.target.code, 640)} style={styles.heroFlag} /></View>
-              <View style={{ width: "100%", gap: 10, marginTop: 2 }}>
+              <Text style={[styles.prompt, hardMode && styles.promptCompact]}>IDENTIFY THE FLAG</Text>
+              <View style={[styles.flagFrame, hardMode && styles.flagFrameCompact]}><Img uri={flagUrl(question.target.code, 640)} style={styles.heroFlag} /></View>
+              <View style={{ width: "100%", gap: hardMode ? 7 : 10, marginTop: hardMode ? 0 : 2 }}>
                 {question.options.map((c, idx) => {
                   const st = optColor(c);
                   return (
                     <Touchable key={c.code} className="press" disabled={!!selected} onPress={() => answer(c)}
-                      style={[styles.answer, st === "correct" && styles.answerCorrect, st === "wrong" && styles.answerWrong]}>
-                      <Row style={{ alignItems: "center", gap: 12 }}>
-                        <View style={[styles.letter, st && styles.letterOn]}>
-                          <Text style={[styles.letterTxt, st && { color: st === "correct" ? T.teal : T.red }]}>{String.fromCharCode(65 + idx)}</Text>
+                      style={[styles.answer, hardMode && styles.answerCompact, st === "correct" && styles.answerCorrect, st === "wrong" && styles.answerWrong]}>
+                      <Row style={{ alignItems: "center", gap: hardMode ? 8 : 12 }}>
+                        <View style={[styles.letter, hardMode && styles.letterCompact, st && styles.letterOn]}>
+                          <Text style={[styles.letterTxt, hardMode && styles.letterTxtCompact, st && { color: st === "correct" ? T.teal : T.red }]}>{String.fromCharCode(65 + idx)}</Text>
                         </View>
-                        <Text style={[styles.answerTxt, st && { color: "#fff" }]}>{c.name}</Text>
+                        <Text style={[styles.answerTxt, hardMode && styles.answerTxtCompact, st && { color: "#fff" }]}>{c.name}</Text>
                         <View style={{ flex: 1 }} />
-                        {st === "correct" && <Icon name="check" size={20} color="#fff" stroke={3} />}
-                        {st === "wrong" && <Icon name="x" size={19} color="#fff" stroke={3} />}
+                        {st === "correct" && <Icon name="check" size={hardMode ? 17 : 20} color="#fff" stroke={3} />}
+                        {st === "wrong" && <Icon name="x" size={hardMode ? 16 : 19} color="#fff" stroke={3} />}
                       </Row>
                     </Touchable>
                   );
@@ -1125,18 +1126,18 @@ function Quiz({ config, onFinish, onQuit }) {
             </React.Fragment>
           ) : (
             <React.Fragment>
-              <Text style={styles.prompt}>PICK THE FLAG OF</Text>
-              <Text style={styles.heroName}>{question.target.name}</Text>
-              <Row style={{ flexWrap: "wrap", gap: 12, justifyContent: "center", alignItems: "flex-start", marginTop: 2 }}>
+              <Text style={[styles.prompt, hardMode && styles.promptCompact]}>PICK THE FLAG OF</Text>
+              <Text style={[styles.heroName, hardMode && styles.heroNameCompact]}>{question.target.name}</Text>
+              <Row style={{ flexWrap: "wrap", gap: hardMode ? 8 : 12, justifyContent: "center", alignItems: "flex-start", marginTop: hardMode ? 0 : 2 }}>
                 {question.options.map((c) => {
                   const st = optColor(c);
                   return (
                     <Touchable key={c.code} className="press" disabled={!!selected} onPress={() => answer(c)}
-                      style={[styles.tile, st === "correct" && styles.tileCorrect, st === "wrong" && styles.tileWrong]}>
+                      style={[styles.tile, hardMode && styles.tileCompact, st === "correct" && styles.tileCorrect, st === "wrong" && styles.tileWrong]}>
                       <Img uri={flagUrl(c.code, 320)} style={styles.tileImg} />
                       {st && (
-                        <View style={[styles.tileBadge, { background: st === "correct" ? T.teal : T.red }]}>
-                          <Icon name={st === "correct" ? "check" : "x"} size={14} color="#fff" stroke={3} />
+                        <View style={[styles.tileBadge, hardMode && styles.tileBadgeCompact, { background: st === "correct" ? T.teal : T.red }]}>
+                          <Icon name={st === "correct" ? "check" : "x"} size={hardMode ? 12 : 14} color="#fff" stroke={3} />
                         </View>
                       )}
                     </Touchable>
@@ -1147,12 +1148,12 @@ function Quiz({ config, onFinish, onQuit }) {
           )}
 
           {selected && (
-            <View style={[styles.feedbackBox, { background: selected.code === question.target.code ? T.teal : T.red }]}>
-              <Text style={styles.feedbackTxt}>{selected.code === question.target.code ? "CORRECT" : `INCORRECT - ${question.target.name.toUpperCase()}`}</Text>
+            <View style={[styles.feedbackBox, hardMode && styles.feedbackBoxCompact, { background: selected.code === question.target.code ? T.teal : T.red }]}>
+              <Text style={[styles.feedbackTxt, hardMode && styles.feedbackTxtCompact]}>{selected.code === question.target.code ? "CORRECT" : `INCORRECT - ${question.target.name.toUpperCase()}`}</Text>
             </View>
           )}
         </div>
-        <View style={{ height: 24 }} />
+        <View style={{ height: hardMode ? 8 : 24 }} />
       </Scroll>
     </View>
   );
@@ -1533,38 +1534,57 @@ const styles = {
   secondaryTxt: { fontFamily: T.fontMono, fontSize: 14.5, fontWeight: 700, color: T.navy, textTransform: "uppercase", letterSpacing: 1.5 },
 
   qTop: { flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 14, paddingBottom: 10, paddingLeft: 14, paddingRight: 14 },
+  qTopCompact: { gap: 8, paddingTop: 8, paddingBottom: 6, paddingLeft: 12, paddingRight: 12 },
   iconBtn: { width: 40, height: 40, borderRadius: 9, background: T.paper, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
+  iconBtnCompact: { width: 34, height: 34, borderRadius: 8 },
   statusTxt: { fontFamily: T.fontMono, fontSize: 13.5, fontWeight: 700, color: T.navy, letterSpacing: 0.5 },
+  statusTxtCompact: { fontSize: 12 },
   scoreChip: { minWidth: 42, height: 40, paddingLeft: 12, paddingRight: 12, borderRadius: 9, background: T.red, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
+  scoreChipCompact: { minWidth: 36, height: 34, paddingLeft: 9, paddingRight: 9, borderRadius: 8 },
   scoreTxt: { fontFamily: T.fontDisplay, fontWeight: 900, fontSize: 18, color: T.onRed },
+  scoreTxtCompact: { fontSize: 16 },
 
   progressTrack: { flexDirection: "row", gap: 4, marginLeft: 14, marginRight: 14, marginTop: 2 },
+  progressTrackCompact: { gap: 3, marginLeft: 12, marginRight: 12, marginTop: 0 },
   progressSeg: { flex: 1, height: 9, borderRadius: 2, background: T.white, border: `2px solid ${T.navy}` },
+  progressSegCompact: { height: 7, borderRadius: 2 },
   progressSegOn: { background: T.navy },
   barTrack: { height: 11, background: T.white, marginLeft: 14, marginRight: 14, borderRadius: 3, border: `2px solid ${T.navy}`, overflow: "hidden" },
+  barTrackCompact: { height: 9, marginLeft: 12, marginRight: 12 },
   barFill: { height: "100%", transition: "width 1s linear" },
 
   prompt: { fontFamily: T.fontDisplay, fontSize: 17, fontWeight: 800, color: T.navy, letterSpacing: 0.5, textAlign: "center", textTransform: "uppercase" },
+  promptCompact: { fontSize: 15 },
   flagFrame: { width: "100%", maxWidth: 300, background: T.white, border: `3px solid ${T.navy}`, borderRadius: 6, padding: 8, boxShadow: SH_LG },
+  flagFrameCompact: { maxWidth: 248, border: `2px solid ${T.navy}`, padding: 6, boxShadow: SH_SM },
   heroFlag: { width: "100%", height: "auto", display: "block", objectFit: "contain", border: `1px solid ${T.outlineVar}` },
   heroName: { fontFamily: T.fontDisplay, fontSize: 30, fontWeight: 900, color: T.navy, textAlign: "center", letterSpacing: -0.5, lineHeight: 1.1, textTransform: "uppercase" },
+  heroNameCompact: { fontSize: 23, lineHeight: 1.02 },
 
   answer: { background: T.white, borderRadius: 8, border: `2px solid ${T.navy}`, paddingTop: 13, paddingBottom: 13, paddingLeft: 13, paddingRight: 15, boxShadow: SH_SM },
+  answerCompact: { borderRadius: 7, paddingTop: 8, paddingBottom: 8, paddingLeft: 9, paddingRight: 10 },
   answerCorrect: { background: T.teal, boxShadow: SH_SM },
   answerWrong: { background: T.red, boxShadow: SH_SM },
   answerTxt: { fontFamily: T.fontBody, fontSize: 15.5, fontWeight: 600, color: T.ink },
+  answerTxtCompact: { fontSize: 12.8, lineHeight: 1.12, overflowWrap: "anywhere" },
   letter: { width: 30, height: 30, borderRadius: 5, background: T.navy, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
+  letterCompact: { width: 24, height: 24, borderRadius: 5 },
   letterOn: { background: T.white },
   letterTxt: { fontFamily: T.fontMono, fontSize: 14, fontWeight: 700, color: T.onNavy },
+  letterTxtCompact: { fontSize: 12 },
 
   tile: { width: 150, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 6, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
+  tileCompact: { width: 132, padding: 5, borderRadius: 5 },
   tileCorrect: { borderColor: T.teal, boxShadow: `3px 3px 0 ${T.teal}` },
   tileWrong: { borderColor: T.red, boxShadow: `3px 3px 0 ${T.red}` },
   tileImg: { width: "100%", height: "auto", display: "block", objectFit: "contain" },
   tileBadge: { position: "absolute", top: 9, right: 9, width: 26, height: 26, borderRadius: 13, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
+  tileBadgeCompact: { top: 6, right: 6, width: 22, height: 22, borderRadius: 11 },
 
   feedbackBox: { borderRadius: 7, border: `2px solid ${T.navy}`, paddingTop: 9, paddingBottom: 9, paddingLeft: 18, paddingRight: 18, boxShadow: SH_SM },
+  feedbackBoxCompact: { paddingTop: 6, paddingBottom: 6, paddingLeft: 12, paddingRight: 12 },
   feedbackTxt: { fontFamily: T.fontMono, fontSize: 13.5, fontWeight: 700, color: "#fff", letterSpacing: 1, textTransform: "uppercase" },
+  feedbackTxtCompact: { fontSize: 11.5 },
 
   flashStage: { width: "100%", height: 318, perspective: 1000 },
   flashInner: { width: "100%", height: "100%", position: "relative", transformStyle: "preserve-3d", transition: "transform .42s cubic-bezier(.2,.7,.3,1)" },
