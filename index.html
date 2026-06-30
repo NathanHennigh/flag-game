@@ -252,11 +252,36 @@ const BY_CODE = Object.fromEntries(COUNTRIES.map((c) => [c.code, c]));
 
 // Famously confusable flag families (for "Similar Flags" mode)
 const SIMILAR_GROUPS = [
-  ["id","mc","pl"], ["ro","td","md","ad"], ["nl","lu"], ["ie","ci"],
-  ["it","mx","hu"], ["au","nz"], ["no","is"], ["dk","se","fi"],
-  ["si","sk","rs","ru"], ["ve","ec","co"], ["sn","ml","gn","cm"],
-  ["be","de"], ["ae","kw","jo","ps","sd"], ["eg","iq","ye","sy"],
-  ["ar","uy"], ["lr","us"],
+  ["id","mc","pl","sg"],
+  ["ro","td","md","ad"],
+  ["nl","lu","ru","fr"],
+  ["ie","ci","it","mx","hu","bg"],
+  ["au","nz","fj","tv","ck","nu"],
+  ["dk","se","fi","no","is","fo","ax"],
+  ["gb","gb-eng","gb-sct","gb-wls","gb-nir","gg","je","im","fo","is"],
+  ["si","sk","rs","ru","hr"],
+  ["ve","ec","co"],
+  ["sn","ml","gn","cm","bj","gh","tg"],
+  ["be","de"],
+  ["ae","kw","jo","ps","sd","ss"],
+  ["eg","iq","ye","sy"],
+  ["bh","qa"],
+  ["ar","uy","gr"],
+  ["lr","us","my"],
+  ["cr","th","kp"],
+  ["pe","ca","at","lv","lb"],
+  ["cu","pr"],
+  ["jp","bd","ne"],
+  ["ma","vn","cn"],
+  ["tr","tn","pk"],
+  ["in","ne"],
+  ["bo","lt"],
+  ["br","pt","es"],
+  ["ai","bm","vg","ky","ms","tc","fk","sh","gi","io","pn","gs"],
+  ["ag","bs","bb","bz","dm","do","gd","ht","kn","lc","vc","tt","pr","vi","bq","cw","sx","mf","bl","gp","mq"],
+  ["as","gu","mp","nf","tk","sb","ws","to","nr","ki","mh","fm","pw","pg","nc","pf","wf","cc","cx"],
+  ["ad","li","mc","sm","va","mt"],
+  ["gf","gp","mq","re","yt","nc","pf","wf","bl","mf","pm","tf"],
 ];
 const ANSWER_GROUPS = [
   ...SIMILAR_GROUPS,
@@ -933,8 +958,7 @@ function Learn({ srsWeights, onReview }) {
   );
 }
 
-function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, syncStatus, onGuest }) {
-  const user = session && session.user;
+function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, onGuest }) {
   const recentRuns = quizHistory.filter((run) => run.ts >= weekAgo());
   const recentReviews = reviewHistory.filter((review) => review.ts >= weekAgo());
   const uniqueReviewed = new Set(reviewHistory.map((review) => review.code)).size;
@@ -1021,28 +1045,6 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, s
         </Module>
 
         <AuthPanel session={session} authReady={authReady} onGuest={onGuest} />
-        {user && (
-          <Module label="SYNC" tone="teal">
-            <Row style={{ alignItems: "center", gap: 12 }}>
-              <View style={styles.authAvatar}><Icon name="check" size={20} color={T.onNavy} stroke={2.4} /></View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.optTitle}>Database Sync</Text>
-                <Text style={styles.optDesc}>{syncStatus}</Text>
-              </View>
-            </Row>
-          </Module>
-        )}
-        {user && (
-          <Module label="EMAIL INFO">
-            <Row style={{ alignItems: "center", gap: 12 }}>
-              <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
-              <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-                <Text style={styles.authEmail}>{user.email || "SIGNED IN"}</Text>
-                <Text style={styles.optDesc}>{`Last sign-in: ${user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "available after next login"}`}</Text>
-              </View>
-            </Row>
-          </Module>
-        )}
 
         <Row style={styles.legalLinks}>
           <a href="./privacy.html" target="_blank" rel="noreferrer" style={styles.legalLink}>Privacy</a>
@@ -1495,7 +1497,7 @@ function App() {
   const content = tab === "learn"
     ? <Learn srsWeights={srsWeights} onReview={handleFlashcardReview} />
     : tab === "account"
-      ? <Account session={session} authReady={authReady} quizHistory={quizHistory} reviewHistory={reviewHistory} srsWeights={srsWeights} syncStatus={syncStatus} onGuest={continueAsGuest} />
+      ? <Account session={session} authReady={authReady} quizHistory={quizHistory} reviewHistory={reviewHistory} srsWeights={srsWeights} onGuest={continueAsGuest} />
       : quizScreen === "quiz"
         ? <Quiz key={runId} config={config} onFinish={handleFinish} onQuit={() => setQuizScreen("home")} />
         : quizScreen === "results"
