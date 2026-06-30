@@ -1098,19 +1098,19 @@ function Quiz({ config, onFinish, onQuit }) {
         <View style={[styles.barTrack, hardMode && styles.barTrackCompact]}><View style={[styles.barFill, { width: `${(timeLeft / 60) * 100}%`, background: timeLeft <= 10 ? T.red : T.navy }]} /></View>
       )}
 
-      <Scroll contentStyle={{ padding: hardMode ? 14 : 20, paddingTop: hardMode ? 10 : 22, gap: hardMode ? 12 : 20, alignItems: "center" }}>
-        <div key={tick} className="fadeIn" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: hardMode ? 12 : 20 }}>
+      <Scroll contentStyle={{ padding: hardMode ? 16 : 20, paddingTop: hardMode ? 12 : 22, gap: hardMode ? 14 : 20, alignItems: "center" }}>
+        <div key={tick} className="fadeIn" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: hardMode ? 14 : 20 }}>
           {question.type === "flagToName" ? (
             <React.Fragment>
               <Text style={[styles.prompt, hardMode && styles.promptCompact]}>IDENTIFY THE FLAG</Text>
               <View style={[styles.flagFrame, hardMode && styles.flagFrameCompact]}><Img uri={flagUrl(question.target.code, 640)} style={styles.heroFlag} /></View>
-              <View style={{ width: "100%", gap: hardMode ? 7 : 10, marginTop: hardMode ? 0 : 2 }}>
+              <View style={{ width: "100%", gap: hardMode ? 9 : 10, marginTop: hardMode ? 4 : 2 }}>
                 {question.options.map((c, idx) => {
                   const st = optColor(c);
                   return (
                     <Touchable key={c.code} className="press" disabled={!!selected} onPress={() => answer(c)}
                       style={[styles.answer, hardMode && styles.answerCompact, st === "correct" && styles.answerCorrect, st === "wrong" && styles.answerWrong]}>
-                      <Row style={{ alignItems: "center", gap: hardMode ? 8 : 12 }}>
+                      <Row style={{ alignItems: "center", gap: hardMode ? 10 : 12 }}>
                         <View style={[styles.letter, hardMode && styles.letterCompact, st && styles.letterOn]}>
                           <Text style={[styles.letterTxt, hardMode && styles.letterTxtCompact, st && { color: st === "correct" ? T.teal : T.red }]}>{String.fromCharCode(65 + idx)}</Text>
                         </View>
@@ -1128,7 +1128,7 @@ function Quiz({ config, onFinish, onQuit }) {
             <React.Fragment>
               <Text style={[styles.prompt, hardMode && styles.promptCompact]}>PICK THE FLAG OF</Text>
               <Text style={[styles.heroName, hardMode && styles.heroNameCompact]}>{question.target.name}</Text>
-              <Row style={{ flexWrap: "wrap", gap: hardMode ? 8 : 12, justifyContent: "center", alignItems: "flex-start", marginTop: hardMode ? 0 : 2 }}>
+              <Row style={{ flexWrap: "wrap", gap: hardMode ? 10 : 12, justifyContent: "center", alignItems: "flex-start", marginTop: hardMode ? 3 : 2 }}>
                 {question.options.map((c) => {
                   const st = optColor(c);
                   return (
@@ -1554,32 +1554,32 @@ const styles = {
   barFill: { height: "100%", transition: "width 1s linear" },
 
   prompt: { fontFamily: T.fontDisplay, fontSize: 17, fontWeight: 800, color: T.navy, letterSpacing: 0.5, textAlign: "center", textTransform: "uppercase" },
-  promptCompact: { fontSize: 15 },
+  promptCompact: { fontSize: 15.8 },
   flagFrame: { width: "100%", maxWidth: 300, background: T.white, border: `3px solid ${T.navy}`, borderRadius: 6, padding: 8, boxShadow: SH_LG },
-  flagFrameCompact: { maxWidth: 248, border: `2px solid ${T.navy}`, padding: 6, boxShadow: SH_SM },
+  flagFrameCompact: { maxWidth: 258, border: `2px solid ${T.navy}`, padding: 6, boxShadow: SH_SM },
   heroFlag: { width: "100%", height: "auto", display: "block", objectFit: "contain", border: `1px solid ${T.outlineVar}` },
   heroName: { fontFamily: T.fontDisplay, fontSize: 30, fontWeight: 900, color: T.navy, textAlign: "center", letterSpacing: -0.5, lineHeight: 1.1, textTransform: "uppercase" },
-  heroNameCompact: { fontSize: 23, lineHeight: 1.02 },
+  heroNameCompact: { fontSize: 25, lineHeight: 1.04 },
 
   answer: { background: T.white, borderRadius: 8, border: `2px solid ${T.navy}`, paddingTop: 13, paddingBottom: 13, paddingLeft: 13, paddingRight: 15, boxShadow: SH_SM },
-  answerCompact: { borderRadius: 7, paddingTop: 8, paddingBottom: 8, paddingLeft: 9, paddingRight: 10 },
+  answerCompact: { borderRadius: 8, paddingTop: 10, paddingBottom: 10, paddingLeft: 10, paddingRight: 12 },
   answerCorrect: { background: T.teal, boxShadow: SH_SM },
   answerWrong: { background: T.red, boxShadow: SH_SM },
   answerTxt: { fontFamily: T.fontBody, fontSize: 15.5, fontWeight: 600, color: T.ink },
-  answerTxtCompact: { fontSize: 12.8, lineHeight: 1.12, overflowWrap: "anywhere" },
+  answerTxtCompact: { fontSize: 14, lineHeight: 1.14, overflowWrap: "anywhere" },
   letter: { width: 30, height: 30, borderRadius: 5, background: T.navy, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
-  letterCompact: { width: 24, height: 24, borderRadius: 5 },
+  letterCompact: { width: 27, height: 27, borderRadius: 5 },
   letterOn: { background: T.white },
   letterTxt: { fontFamily: T.fontMono, fontSize: 14, fontWeight: 700, color: T.onNavy },
-  letterTxtCompact: { fontSize: 12 },
+  letterTxtCompact: { fontSize: 12.8 },
 
   tile: { width: 150, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 6, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
-  tileCompact: { width: 132, padding: 5, borderRadius: 5 },
+  tileCompact: { width: 138, padding: 6, borderRadius: 6 },
   tileCorrect: { borderColor: T.teal, boxShadow: `3px 3px 0 ${T.teal}` },
   tileWrong: { borderColor: T.red, boxShadow: `3px 3px 0 ${T.red}` },
   tileImg: { width: "100%", height: "auto", display: "block", objectFit: "contain" },
   tileBadge: { position: "absolute", top: 9, right: 9, width: 26, height: 26, borderRadius: 13, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
-  tileBadgeCompact: { top: 6, right: 6, width: 22, height: 22, borderRadius: 11 },
+  tileBadgeCompact: { top: 7, right: 7, width: 23, height: 23, borderRadius: 12 },
 
   feedbackBox: { borderRadius: 7, border: `2px solid ${T.navy}`, paddingTop: 9, paddingBottom: 9, paddingLeft: 18, paddingRight: 18, boxShadow: SH_SM },
   feedbackBoxCompact: { paddingTop: 6, paddingBottom: 6, paddingLeft: 12, paddingRight: 12 },
