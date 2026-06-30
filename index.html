@@ -888,19 +888,6 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, s
     <View style={{ flex: 1, minHeight: 0 }}>
       <AppHeader kicker="ACCOUNT" title="PROFILE" />
       <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 16 }}>
-        <AuthPanel session={session} authReady={authReady} onGuest={onGuest} />
-        {user && (
-          <Module label="SYNC" tone="teal">
-            <Row style={{ alignItems: "center", gap: 12 }}>
-              <View style={styles.authAvatar}><Icon name="check" size={20} color={T.onNavy} stroke={2.4} /></View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={styles.optTitle}>Database Sync</Text>
-                <Text style={styles.optDesc}>{syncStatus}</Text>
-              </View>
-            </Row>
-          </Module>
-        )}
-
         <Module label="ACCURACY">
           <Row style={{ gap: 9 }}>
             <View style={[styles.statBox, { flex: 1 }]}>
@@ -949,18 +936,6 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, s
           </Row>
         </Module>
 
-        {user && (
-          <Module label="EMAIL INFO">
-            <Row style={{ alignItems: "center", gap: 12 }}>
-              <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
-              <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-                <Text style={styles.authEmail}>{user.email || "SIGNED IN"}</Text>
-                <Text style={styles.optDesc}>{`Last sign-in: ${user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "available after next login"}`}</Text>
-              </View>
-            </Row>
-          </Module>
-        )}
-
         <Module label="WATCH LIST" tone="red">
           {watchList.length ? watchList.map((item) => (
             <Row key={item.country.code} style={styles.revRow}>
@@ -974,6 +949,31 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, s
             <Text style={styles.authNotice}>No flashcard reviews yet.</Text>
           )}
         </Module>
+
+        <AuthPanel session={session} authReady={authReady} onGuest={onGuest} />
+        {user && (
+          <Module label="SYNC" tone="teal">
+            <Row style={{ alignItems: "center", gap: 12 }}>
+              <View style={styles.authAvatar}><Icon name="check" size={20} color={T.onNavy} stroke={2.4} /></View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.optTitle}>Database Sync</Text>
+                <Text style={styles.optDesc}>{syncStatus}</Text>
+              </View>
+            </Row>
+          </Module>
+        )}
+        {user && (
+          <Module label="EMAIL INFO">
+            <Row style={{ alignItems: "center", gap: 12 }}>
+              <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
+              <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
+                <Text style={styles.authEmail}>{user.email || "SIGNED IN"}</Text>
+                <Text style={styles.optDesc}>{`Last sign-in: ${user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleDateString() : "available after next login"}`}</Text>
+              </View>
+            </Row>
+          </Module>
+        )}
+
         <Row style={styles.legalLinks}>
           <a href="./privacy.html" target="_blank" rel="noreferrer" style={styles.legalLink}>Privacy</a>
           <Text style={styles.legalSep}>/</Text>
