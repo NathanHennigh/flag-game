@@ -168,7 +168,17 @@ function Icon({ name, size = 24, color = "currentColor", stroke = 2, style }) {
 }
 
 /* ---------- data ----------------------------------------------------------- */
-const flagUrl = (code, w = 320) => `https://flagcdn.com/w${w}/${code}.png`;
+const customFlagUrl = (svg) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+const CUSTOM_FLAG_URLS = {
+  xsom: customFlagUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600">
+    <rect width="900" height="200" fill="#198a00"/>
+    <rect y="200" width="900" height="200" fill="#fff"/>
+    <rect y="400" width="900" height="200" fill="#d21034"/>
+    <text x="450" y="124" text-anchor="middle" direction="rtl" font-family="serif" font-size="50" font-weight="700" fill="#fff">&#x0644;&#x0627; &#x0625;&#x0644;&#x0647; &#x0625;&#x0644;&#x0627; &#x0627;&#x0644;&#x0644;&#x0647; &#x0645;&#x062D;&#x0645;&#x062F; &#x0631;&#x0633;&#x0648;&#x0644; &#x0627;&#x0644;&#x0644;&#x0647;</text>
+    <polygon fill="#111" points="450,246 470,306 534,306 482,344 502,405 450,367 398,405 418,344 366,306 430,306"/>
+  </svg>`),
+};
+const flagUrl = (code, w = 320) => CUSTOM_FLAG_URLS[code] || `https://flagcdn.com/w${w}/${code}.png`;
 
 const RAW = {
   Africa: [["Algeria","dz",2],["Angola","ao",3],["Benin","bj",3],["Botswana","bw",3],["Burkina Faso","bf",3],["Burundi","bi",3],["Cameroon","cm",2],["Cape Verde","cv",3],["Central African Republic","cf",3],["Chad","td",2],["Comoros","km",3],["Congo","cg",3],["DR Congo","cd",3],["Djibouti","dj",3],["Egypt","eg",1],["Equatorial Guinea","gq",3],["Eritrea","er",3],["Eswatini","sz",3],["Ethiopia","et",2],["Gabon","ga",3],["Gambia","gm",3],["Ghana","gh",2],["Guinea","gn",3],["Guinea-Bissau","gw",3],["Ivory Coast","ci",2],["Kenya","ke",1],["Lesotho","ls",3],["Liberia","lr",3],["Libya","ly",2],["Madagascar","mg",2],["Malawi","mw",3],["Mali","ml",3],["Mauritania","mr",3],["Mauritius","mu",3],["Morocco","ma",1],["Mozambique","mz",3],["Namibia","na",2],["Niger","ne",3],["Nigeria","ng",1],["Rwanda","rw",2],["São Tomé & Príncipe","st",3],["Senegal","sn",2],["Seychelles","sc",3],["Sierra Leone","sl",3],["Somalia","so",2],["South Africa","za",1],["South Sudan","ss",3],["Sudan","sd",2],["Tanzania","tz",2],["Togo","tg",3],["Tunisia","tn",2],["Uganda","ug",2],["Zambia","zm",3],["Zimbabwe","zw",2]],
@@ -177,6 +187,7 @@ const RAW = {
   "North America": [["Antigua & Barbuda","ag",3],["Bahamas","bs",2],["Barbados","bb",2],["Belize","bz",3],["Canada","ca",1],["Costa Rica","cr",2],["Cuba","cu",1],["Dominica","dm",3],["Dominican Republic","do",2],["El Salvador","sv",3],["Grenada","gd",3],["Guatemala","gt",2],["Haiti","ht",2],["Honduras","hn",3],["Jamaica","jm",1],["Mexico","mx",1],["Nicaragua","ni",3],["Panama","pa",2],["St. Kitts & Nevis","kn",3],["St. Lucia","lc",3],["St. Vincent & Grenadines","vc",3],["Trinidad & Tobago","tt",2],["United States","us",1]],
   "South America": [["Argentina","ar",1],["Bolivia","bo",2],["Brazil","br",1],["Chile","cl",1],["Colombia","co",1],["Ecuador","ec",2],["Guyana","gy",3],["Paraguay","py",3],["Peru","pe",1],["Suriname","sr",3],["Uruguay","uy",2],["Venezuela","ve",2]],
   Oceania: [["Australia","au",1],["Fiji","fj",2],["Kiribati","ki",3],["Marshall Islands","mh",3],["Micronesia","fm",3],["Nauru","nr",3],["New Zealand","nz",1],["Palau","pw",3],["Papua New Guinea","pg",2],["Samoa","ws",3],["Solomon Islands","sb",3],["Tonga","to",3],["Tuvalu","tv",3],["Vanuatu","vu",3]],
+  "Fringe Flags": [["American Samoa","as",3],["Aland Islands","ax",3],["Anguilla","ai",3],["Antarctica","aq",3],["Aruba","aw",3],["Bermuda","bm",3],["Bouvet Island","bv",3],["British Indian Ocean Territory","io",3],["British Virgin Islands","vg",3],["Caribbean Netherlands","bq",3],["Cayman Islands","ky",3],["Christmas Island","cx",3],["Cocos Islands","cc",3],["Cook Islands","ck",3],["Curacao","cw",3],["England","gb-eng",3],["Falkland Islands","fk",3],["Faroe Islands","fo",3],["French Guiana","gf",3],["French Polynesia","pf",3],["French Southern & Antarctic Lands","tf",3],["Gibraltar","gi",3],["Greenland","gl",3],["Guadeloupe","gp",3],["Guam","gu",3],["Guernsey","gg",3],["Heard & McDonald Islands","hm",3],["Hong Kong","hk",3],["Isle of Man","im",3],["Jersey","je",3],["Macau","mo",3],["Martinique","mq",3],["Mayotte","yt",3],["Montserrat","ms",3],["New Caledonia","nc",3],["Niue","nu",3],["Norfolk Island","nf",3],["Northern Ireland","gb-nir",3],["Northern Mariana Islands","mp",3],["Pitcairn Islands","pn",3],["Puerto Rico","pr",3],["Reunion","re",3],["Saint Barthelemy","bl",3],["Saint Helena","sh",3],["Saint Martin","mf",3],["Saint Pierre & Miquelon","pm",3],["Scotland","gb-sct",3],["Sint Maarten","sx",3],["Somaliland","xsom",3],["South Georgia","gs",3],["Svalbard & Jan Mayen","sj",3],["Tokelau","tk",3],["Turks & Caicos Islands","tc",3],["U.S. Minor Outlying Islands","um",3],["U.S. Virgin Islands","vi",3],["Wales","gb-wls",3],["Wallis & Futuna","wf",3],["Western Sahara","eh",3]],
 };
 const COUNTRIES = Object.entries(RAW).flatMap(([continent, list]) =>
   list.map(([name, code, diff]) => ({ name, code, diff, continent })));
@@ -203,16 +214,17 @@ const SCOPES = [
   { key: "North America", label: "North America", icon: "northAmerica" },
   { key: "South America", label: "South America", icon: "southAmerica" },
   { key: "Oceania", label: "Oceania", icon: "oceania" },
+  { key: "Fringe Flags", label: "Fringe Flags", icon: "layers" },
   { key: "similar", label: "Similar Flags", icon: "shuffle" },
 ];
 const DIRECTIONS = [
-  { key: "flagToName", label: "Name the Country", icon: "flag", desc: "See a flag, guess whose it is", color: "primary" },
+  { key: "flagToName", label: "Name the Country", icon: "flag", desc: "See a flag, pick the country", color: "primary" },
   { key: "nameToFlag", label: "Spot the Flag", icon: "grid", desc: "See a name, pick the flag", color: "blue" },
 ];
 const DIFFS = [
-  { key: "easy", label: "Easy", desc: "Well-known nations · 3 choices" },
-  { key: "medium", label: "Medium", desc: "A wider pool · 4 choices" },
-  { key: "hard", label: "Hard", desc: "Every nation · 6 choices" },
+  { key: "easy", label: "Easy", desc: "Well-known nations - 3 choices" },
+  { key: "medium", label: "Medium", desc: "A wider pool - 4 choices" },
+  { key: "hard", label: "Hard", desc: "Every flag - 6 choices" },
 ];
 const STYLES_MODE = [
   { key: "classic", label: "Classic", icon: "target", desc: "10 questions" },
