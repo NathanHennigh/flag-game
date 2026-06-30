@@ -335,6 +335,37 @@ function makeQuestion(config, recent, weights = {}) {
   return { target, options: shuffle([target, ...distractors]), type: config.type };
 }
 
+function getQuizTargetPool(config) {
+  return config.scope === "similar" ? getStudyPool(config) : getPool(config);
+}
+
+function makeQuestionForTarget(config, target) {
+  const n = NUM_OPTIONS[config.difficulty];
+  if (config.scope === "similar") {
+    const group = (SIMILAR_GROUPS.find((codes) => codes.includes(target.code)) || [])
+      .map((code) => BY_CODE[code])
+      .filter(Boolean);
+    let opts = shuffle(group.filter((c) => c.code !== target.code)).slice(0, n - 1);
+    if (opts.length < n - 1) {
+      const fillers = shuffle(COUNTRIES.filter((c) =>
+        c.code !== target.code && !opts.some((opt) => opt.code === c.code)
+      ));
+      opts = opts.concat(fillers.slice(0, n - 1 - opts.length));
+    }
+    return { target, options: shuffle([target, ...opts]), type: config.type };
+  }
+  const pool = getPool(config);
+  const distractors = shuffle(pool.filter((c) => c.code !== target.code)).slice(0, n - 1);
+  return { target, options: shuffle([target, ...distractors]), type: config.type };
+}
+
+function makeUniqueQuestion(config, usedCodes) {
+  const pool = getQuizTargetPool(config);
+  const available = pool.filter((c) => !usedCodes.includes(c.code));
+  if (!available.length) return null;
+  return makeQuestionForTarget(config, pick(available));
+}
+
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const accuracy = (r) => (r.total ? Math.round((r.score / r.total) * 100) : 0);
 const weekAgo = () => Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -679,6 +710,7 @@ function Home({ config, setConfig, onStart, bestScores }) {
 
 function Learn({ srsWeights, onReview }) {
   const [learnConfig, setLearnConfig] = useState({ scope: "world", difficulty: "medium" });
+  const [screen, setScreen] = useState("setup");
   const recent = useRef([]);
   const makeCard = (weights = srsWeights) => {
     const pool = getStudyPool(learnConfig);
@@ -686,29 +718,116 @@ function Learn({ srsWeights, onReview }) {
     recent.current = [next.code, ...recent.current].slice(0, 12);
     return next;
   };
-  const [card, setCard] = useState(() => makeCard());
+  const [card, setCard] = useState(null);
   const [revealed, setRevealed] = useState(false);
+  const [answerReady, setAnswerReady] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
+  const [reviewed, setReviewed] = useState(0);
   const activeDiff = DIFFS.find((d) => d.key === learnConfig.difficulty);
   const poolCount = getStudyPool(learnConfig).length;
 
   useEffect(() => {
     recent.current = [];
-    setCard(makeCard());
+    setCard(null);
     setRevealed(false);
+    setAnswerReady(false);
+    setTransitioning(false);
+    setReviewed(0);
+    setScreen("setup");
   }, [learnConfig.scope, learnConfig.difficulty]);
 
   const set = (k, v) => setLearnConfig((c) => ({ ...c, [k]: v }));
 
+  const start = () => {
+    recent.current = [];
+    setReviewed(0);
+    setTransitioning(false);
+    setRevealed(false);
+    setAnswerReady(false);
+    setCard(makeCard());
+    setScreen("study");
+  };
+
+  const reveal = () => {
+    if (transitioning) return;
+    setRevealed(true);
+    setAnswerReady(false);
+    setTimeout(() => setAnswerReady(true), 430);
+  };
+
   const review = (rating) => {
-    if (!card) return;
+    if (!card || transitioning) return;
     const multipliers = { tricky: 1.8, good: 0.7, easy: 0.35 };
     const current = srsWeights[card.code] || 1;
     const nextWeight = Math.max(0.1, Math.min(10, current * multipliers[rating]));
     const nextWeights = { ...srsWeights, [card.code]: nextWeight };
     onReview(card, rating, learnConfig);
-    setCard(makeCard(nextWeights));
+    setReviewed((n) => n + 1);
+    setTransitioning(true);
+    setAnswerReady(false);
     setRevealed(false);
+    setTimeout(() => {
+      setCard(makeCard(nextWeights));
+      setTransitioning(false);
+    }, 460);
   };
+
+  if (screen === "study" && card) {
+    return (
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <Row style={styles.qTop}>
+          <Touchable className="press" onPress={() => setScreen("setup")} style={styles.iconBtn}><Icon name="x" size={18} color={T.navy} stroke={2.6} /></Touchable>
+          <View style={{ flex: 1, alignItems: "center" }}>
+            <Text style={styles.statusTxt}>CARD {String(reviewed + 1).padStart(2, "0")}</Text>
+          </View>
+          <View style={styles.scoreChip}><Text style={styles.scoreTxt}>{reviewed}</Text></View>
+        </Row>
+
+        <Scroll contentStyle={{ padding: 20, paddingTop: 22, gap: 18, alignItems: "center" }}>
+          <Module label="FLASHCARD" tone={revealed ? "teal" : "navy"} right={<Text style={styles.authPill}>{poolCount}</Text>} style={{ width: "100%" }}>
+            <View style={styles.flashStage}>
+              <View style={[styles.flashInner, revealed && styles.flashInnerOn]}>
+                <View style={styles.flashFace}>
+                  <Text style={styles.prompt}>NAME THIS FLAG</Text>
+                  <View style={styles.flashFlagFrame}><Img uri={flagUrl(card.code, 640)} style={styles.heroFlag} /></View>
+                </View>
+                <View style={[styles.flashFace, styles.flashBack]}>
+                  <Text style={styles.prompt}>ANSWER</Text>
+                  <Text style={styles.flashName}>{card.name}</Text>
+                  <Text style={styles.flashMeta}>{card.continent.toUpperCase()}</Text>
+                </View>
+              </View>
+            </View>
+
+            {!revealed ? (
+              <Touchable className="press" onPress={reveal} disabled={transitioning} style={[styles.primaryBtn, transitioning && styles.disabledBtn]}>
+                <Icon name="arrowRight" size={17} color={T.onRed} stroke={2.4} />
+                <Text style={styles.primaryTxt}>Reveal</Text>
+              </Touchable>
+            ) : answerReady && !transitioning ? (
+              <View style={styles.confWrap} className="popIn">
+                <Text style={styles.confLabel}>CONFIDENCE</Text>
+                <Row style={styles.confRow}>
+                  <Touchable className="press" onPress={() => review("tricky")} disabled={transitioning} style={[styles.confBtn, { background: T.redSoft }, transitioning && styles.disabledBtn]}>
+                    <Text style={styles.confTxt}>TRICKY</Text><Text style={styles.confSub}>soon</Text>
+                  </Touchable>
+                  <Touchable className="press" onPress={() => review("good")} disabled={transitioning} style={[styles.confBtn, { background: T.blueFixed }, transitioning && styles.disabledBtn]}>
+                    <Text style={styles.confTxt}>GOOD</Text><Text style={styles.confSub}>later</Text>
+                  </Touchable>
+                  <Touchable className="press" onPress={() => review("easy")} disabled={transitioning} style={[styles.confBtn, { background: T.tealFixed }, transitioning && styles.disabledBtn]}>
+                    <Text style={styles.confTxt}>EASY</Text><Text style={styles.confSub}>rarely</Text>
+                  </Touchable>
+                </Row>
+              </View>
+            ) : (
+              <View style={styles.confPlaceholder} />
+            )}
+          </Module>
+          <View style={{ height: 20 }} />
+        </Scroll>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
@@ -728,45 +847,14 @@ function Learn({ srsWeights, onReview }) {
           />
         </Module>
 
-        <Module label="FLASHCARD" tone={revealed ? "teal" : "navy"} right={<Text style={styles.authPill}>{poolCount}</Text>}>
-          <View style={styles.flashStage}>
-            <View style={[styles.flashInner, revealed && styles.flashInnerOn]}>
-              <View style={styles.flashFace}>
-                <Text style={styles.prompt}>NAME THIS FLAG</Text>
-                <View style={styles.flashFlagFrame}><Img uri={flagUrl(card.code, 640)} style={styles.heroFlag} /></View>
-              </View>
-              <View style={[styles.flashFace, styles.flashBack]}>
-                <Text style={styles.prompt}>ANSWER</Text>
-                <Text style={styles.flashName}>{card.name}</Text>
-                <View style={styles.flashMiniFlag}><Img uri={flagUrl(card.code, 320)} style={styles.tileImg} /></View>
-              </View>
-            </View>
-          </View>
-
-          {!revealed ? (
-            <Touchable className="press" onPress={() => setRevealed(true)} style={styles.primaryBtn}>
-              <Icon name="arrowRight" size={17} color={T.onRed} stroke={2.4} />
-              <Text style={styles.primaryTxt}>Reveal</Text>
-            </Touchable>
-          ) : (
-            <View style={styles.confWrap} className="popIn">
-              <Text style={styles.confLabel}>CONFIDENCE</Text>
-              <Row style={{ gap: 9 }}>
-                <Touchable className="press" onPress={() => review("tricky")} style={[styles.confBtn, { background: T.redSoft }]}>
-                  <Text style={styles.confTxt}>TRICKY</Text><Text style={styles.confSub}>soon</Text>
-                </Touchable>
-                <Touchable className="press" onPress={() => review("good")} style={[styles.confBtn, { background: T.blueFixed }]}>
-                  <Text style={styles.confTxt}>GOOD</Text><Text style={styles.confSub}>later</Text>
-                </Touchable>
-                <Touchable className="press" onPress={() => review("easy")} style={[styles.confBtn, { background: T.tealFixed }]}>
-                  <Text style={styles.confTxt}>EASY</Text><Text style={styles.confSub}>rarely</Text>
-                </Touchable>
-              </Row>
-            </View>
-          )}
-        </Module>
-        <View style={{ height: 20 }} />
+        <View style={{ height: 92 }} />
       </Scroll>
+      <View style={styles.footer}>
+        <Touchable className="press" onPress={start} style={styles.primaryBtn}>
+          <Icon name="starFilled" size={17} color={T.onRed} />
+          <Text style={styles.primaryTxt}>Start Learning</Text>
+        </Touchable>
+      </View>
     </View>
   );
 }
@@ -895,10 +983,10 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, s
 
 /* ---------- QUIZ ----------------------------------------------------------- */
 function Quiz({ config, onFinish, onQuit }) {
-  const recent = useRef([]);
+  const usedCodes = useRef([]);
   const [question, setQuestion] = useState(() => {
-    const q = makeQuestion(config, []);
-    recent.current = [q.target.code];
+    const q = makeUniqueQuestion(config, []);
+    if (q) usedCodes.current = [q.target.code];
     return q;
   });
   const [score, setScore] = useState(0);
@@ -926,8 +1014,9 @@ function Quiz({ config, onFinish, onQuit }) {
   }, [timeLeft, config.mode]);
 
   const next = () => {
-    const q = makeQuestion(config, recent.current);
-    recent.current = [q.target.code, ...recent.current].slice(0, 10);
+    const q = makeUniqueQuestion(config, usedCodes.current);
+    if (!q) return finish();
+    usedCodes.current = [q.target.code, ...usedCodes.current];
     setQuestion(q); setSelected(null); setTick((t) => t + 1);
   };
 
@@ -947,6 +1036,7 @@ function Quiz({ config, onFinish, onQuit }) {
       if (config.mode === "classic" && newAnswers.length >= CLASSIC_TOTAL) return finish();
       if (config.mode === "survival" && newLives <= 0) return finish();
       if (config.mode === "timeAttack" && timeLeft <= 0) return finish();
+      if (usedCodes.current.length >= getQuizTargetPool(config).length) return finish();
       next();
     }, 820);
   };
@@ -1439,7 +1529,7 @@ const styles = {
 
   prompt: { fontFamily: T.fontDisplay, fontSize: 17, fontWeight: 800, color: T.navy, letterSpacing: 0.5, textAlign: "center", textTransform: "uppercase" },
   flagFrame: { width: "100%", maxWidth: 300, background: T.white, border: `3px solid ${T.navy}`, borderRadius: 6, padding: 8, boxShadow: SH_LG },
-  heroFlag: { width: "100%", height: "auto", display: "block", border: `1px solid ${T.outlineVar}` },
+  heroFlag: { width: "100%", height: "auto", display: "block", objectFit: "contain", border: `1px solid ${T.outlineVar}` },
   heroName: { fontFamily: T.fontDisplay, fontSize: 30, fontWeight: 900, color: T.navy, textAlign: "center", letterSpacing: -0.5, lineHeight: 1.1, textTransform: "uppercase" },
 
   answer: { background: T.white, borderRadius: 8, border: `2px solid ${T.navy}`, paddingTop: 13, paddingBottom: 13, paddingLeft: 13, paddingRight: 15, boxShadow: SH_SM },
@@ -1453,24 +1543,26 @@ const styles = {
   tile: { width: 150, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 6, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
   tileCorrect: { borderColor: T.teal, boxShadow: `3px 3px 0 ${T.teal}` },
   tileWrong: { borderColor: T.red, boxShadow: `3px 3px 0 ${T.red}` },
-  tileImg: { width: "100%", height: "auto", display: "block" },
+  tileImg: { width: "100%", height: "auto", display: "block", objectFit: "contain" },
   tileBadge: { position: "absolute", top: 9, right: 9, width: 26, height: 26, borderRadius: 13, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
 
   feedbackBox: { borderRadius: 7, border: `2px solid ${T.navy}`, paddingTop: 9, paddingBottom: 9, paddingLeft: 18, paddingRight: 18, boxShadow: SH_SM },
   feedbackTxt: { fontFamily: T.fontMono, fontSize: 13.5, fontWeight: 700, color: "#fff", letterSpacing: 1, textTransform: "uppercase" },
 
-  flashStage: { width: "100%", height: 286, perspective: 1000 },
+  flashStage: { width: "100%", height: 318, perspective: 1000 },
   flashInner: { width: "100%", height: "100%", position: "relative", transformStyle: "preserve-3d", transition: "transform .42s cubic-bezier(.2,.7,.3,1)" },
   flashInnerOn: { transform: "rotateY(180deg)" },
   flashFace: { position: "absolute", inset: 0, background: T.white, border: `3px solid ${T.navy}`, borderRadius: 10, boxShadow: SH_LG, padding: 16, alignItems: "center", justifyContent: "center", gap: 16, backfaceVisibility: "hidden" },
   flashBack: { transform: "rotateY(180deg)", background: T.tealFixed },
   flashFlagFrame: { width: "100%", maxWidth: 305, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 8 },
   flashName: { fontFamily: T.fontDisplay, fontSize: 30, fontWeight: 900, color: T.navy, textAlign: "center", lineHeight: 1.05, textTransform: "uppercase" },
-  flashMiniFlag: { width: 112, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 5, padding: 5, boxShadow: SH_SM },
+  flashMeta: { fontFamily: T.fontMono, fontSize: 11, fontWeight: 700, color: T.navyDim, textTransform: "uppercase", letterSpacing: 1.3 },
 
-  confWrap: { width: "100%", gap: 9, marginTop: 4, alignItems: "center" },
+  confWrap: { width: "100%", gap: 13, marginTop: 6, alignItems: "center" },
+  confPlaceholder: { width: "100%", minHeight: 91 },
+  confRow: { width: "100%", gap: 12 },
   confLabel: { fontFamily: T.fontMono, fontSize: 11, fontWeight: 700, color: T.inkDim, letterSpacing: 1.2 },
-  confBtn: { flex: 1, alignItems: "center", gap: 1, border: `2px solid ${T.navy}`, borderRadius: 7, paddingTop: 10, paddingBottom: 10, boxShadow: SH_SM },
+  confBtn: { flex: 1, minHeight: 64, alignItems: "center", justifyContent: "center", gap: 4, border: `2px solid ${T.navy}`, borderRadius: 8, paddingTop: 14, paddingBottom: 14, paddingLeft: 8, paddingRight: 8, boxShadow: SH_SM },
   confTxt: { fontFamily: T.fontDisplay, fontSize: 14, fontWeight: 800, color: T.navy, textTransform: "uppercase" },
   confSub: { fontFamily: T.fontMono, fontSize: 8.5, color: T.inkDim, textTransform: "uppercase", letterSpacing: 0.3 },
 
