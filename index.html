@@ -21,9 +21,11 @@
   * { box-sizing: border-box; }
   *::-webkit-scrollbar { width: 0; height: 0; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  @keyframes softFade { from { opacity: 0.35; } to { opacity: 1; } }
   @keyframes popIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
   @keyframes bobIn { 0% { opacity: 0; transform: scale(.8) translateY(8px); } 60% { transform: scale(1.04); } 100% { opacity: 1; transform: none; } }
   .fadeIn { animation: fadeIn .3s cubic-bezier(.2,.7,.3,1) both; }
+  .softFade { animation: softFade .2s ease both; }
   .popIn { animation: popIn .26s cubic-bezier(.2,.7,.3,1) both; }
   .bobIn { animation: bobIn .5s cubic-bezier(.34,1.56,.5,1) both; }
   .press { transition: transform .08s ease, box-shadow .08s ease; }
@@ -256,6 +258,19 @@ const SIMILAR_GROUPS = [
   ["be","de"], ["ae","kw","jo","ps","sd"], ["eg","iq","ye","sy"],
   ["ar","uy"], ["lr","us"],
 ];
+const ANSWER_GROUPS = [
+  ...SIMILAR_GROUPS,
+  ["cr","th","kp"],
+  ["pe","ca","at","lb"],
+  ["gb","gb-eng","gb-sct","gb-wls","gb-nir","gg","je","im"],
+  ["gb","au","nz","fj","tv","ck","nu","bm","ky","vg","ai","ms","tc","fk","sh","gs","io","pn"],
+  ["ai","bm","vg","ky","ms","tc","fk","sh","gi","gg","je","im","io","pn","gs"],
+  ["ag","bs","bb","bz","cu","dm","do","gd","ht","jm","kn","lc","vc","tt","pr","vi","bq","cw","sx","mf","bl","gp","mq","tc","ky","vg","ai","ms"],
+  ["as","gu","mp","ck","nu","nf","tk","tv","sb","fj","ws","to","nr","ki","mh","fm","pw","pg","nc","pf","wf","pn","cc","cx"],
+  ["ad","li","mc","sm","va","mt"],
+  ["fo","gl","ax","sj","is","no","dk","se","fi"],
+  ["gf","gp","mq","re","yt","nc","pf","wf","bl","mf","pm","tf"],
+];
 const SIMILAR_COUNT = new Set(SIMILAR_GROUPS.flat()).size;
 
 const REGION_COUNT = { world: COUNTRIES.length, similar: SIMILAR_COUNT };
@@ -322,22 +337,68 @@ function getStudyPool(config) {
   return getPool(config);
 }
 
+const countriesFromCodes = (codes) => codes.map((code) => BY_CODE[code]).filter(Boolean);
+const answerGroupCodesFor = (code) => Array.from(new Set(
+  ANSWER_GROUPS.filter((group) => group.includes(code)).flat()
+));
+
+function addDistractors(opts, candidates, target, need) {
+  const seen = new Set([target.code, ...opts.map((c) => c.code)]);
+  for (const c of shuffle(candidates)) {
+    if (!c || seen.has(c.code)) continue;
+    opts.push(c);
+    seen.add(c.code);
+    if (opts.length >= need) break;
+  }
+  return opts;
+}
+
+function buildDistractors(config, target, preferredCodes = []) {
+  const need = NUM_OPTIONS[config.difficulty] - 1;
+  const targetPool = config.scope === "similar" ? getStudyPool(config) : getPool(config);
+  const poolCodes = new Set(targetPool.map((c) => c.code));
+  const inPool = (items) => items.filter((c) => poolCodes.has(c.code));
+  const sameContinent = targetPool.filter((c) => c.continent === target.continent);
+  const groupCountries = countriesFromCodes([...preferredCodes, ...answerGroupCodesFor(target.code)]);
+  const hardFloor = config.difficulty === "hard" ? Math.max(2, target.diff) : target.diff;
+  const opts = [];
+
+  const tiers = config.difficulty === "hard"
+    ? [
+        inPool(groupCountries).filter((c) => c.diff >= hardFloor || c.continent === target.continent),
+        sameContinent.filter((c) => c.diff >= hardFloor),
+        targetPool.filter((c) => c.diff === target.diff),
+        targetPool.filter((c) => c.diff >= hardFloor),
+        inPool(groupCountries),
+        sameContinent,
+        targetPool,
+        groupCountries,
+      ]
+    : [
+        inPool(groupCountries),
+        sameContinent.filter((c) => c.diff === target.diff),
+        targetPool.filter((c) => c.diff === target.diff),
+        sameContinent,
+        targetPool,
+        groupCountries,
+      ];
+
+  tiers.forEach((tier) => addDistractors(opts, tier, target, need));
+  if (opts.length < need) addDistractors(opts, COUNTRIES, target, need);
+  return opts.slice(0, need);
+}
+
 function makeQuestion(config, recent, weights = {}) {
   const n = NUM_OPTIONS[config.difficulty];
   if (config.scope === "similar") {
     const group = pick(SIMILAR_GROUPS).map((c) => BY_CODE[c]).filter(Boolean);
     const target = weightedPick(group, weights, recent);
-    let opts = shuffle(group.filter((c) => c.code !== target.code)).slice(0, n - 1);
-    if (opts.length < n - 1) {
-      const sameCont = shuffle(COUNTRIES.filter((c) => c.continent === target.continent && c.code !== target.code && !opts.includes(c)));
-      const fillers = sameCont.concat(shuffle(COUNTRIES.filter((c) => c.code !== target.code && !opts.includes(c))));
-      opts = opts.concat(fillers.slice(0, n - 1 - opts.length));
-    }
+    const opts = buildDistractors(config, target, group.map((c) => c.code));
     return { target, options: shuffle([target, ...opts]), type: config.type };
   }
   const pool = getPool(config);
   const target = weightedPick(pool, weights, recent);
-  const distractors = shuffle(pool.filter((c) => c.code !== target.code)).slice(0, n - 1);
+  const distractors = buildDistractors(config, target);
   return { target, options: shuffle([target, ...distractors]), type: config.type };
 }
 
@@ -351,17 +412,10 @@ function makeQuestionForTarget(config, target) {
     const group = (SIMILAR_GROUPS.find((codes) => codes.includes(target.code)) || [])
       .map((code) => BY_CODE[code])
       .filter(Boolean);
-    let opts = shuffle(group.filter((c) => c.code !== target.code)).slice(0, n - 1);
-    if (opts.length < n - 1) {
-      const fillers = shuffle(COUNTRIES.filter((c) =>
-        c.code !== target.code && !opts.some((opt) => opt.code === c.code)
-      ));
-      opts = opts.concat(fillers.slice(0, n - 1 - opts.length));
-    }
+    const opts = buildDistractors(config, target, group.map((c) => c.code));
     return { target, options: shuffle([target, ...opts]), type: config.type };
   }
-  const pool = getPool(config);
-  const distractors = shuffle(pool.filter((c) => c.code !== target.code)).slice(0, n - 1);
+  const distractors = buildDistractors(config, target);
   return { target, options: shuffle([target, ...distractors]), type: config.type };
 }
 
@@ -383,6 +437,11 @@ const preloadFlag = (country, w = 640) => new Promise((resolve) => {
   img.onerror = resolve;
   img.src = flagUrl(country.code, w);
 });
+const preloadQuestionAssets = (question) => {
+  if (!question) return Promise.resolve();
+  const flags = question.type === "flagToName" ? [question.target] : question.options;
+  return Promise.all(flags.map((country) => preloadFlag(country, question.type === "flagToName" ? 640 : 320)));
+};
 const calcAccuracy = (runs) => {
   const totals = runs.reduce((acc, run) => ({
     score: acc.score + (run.score || 0),
@@ -1028,13 +1087,6 @@ function Quiz({ config, onFinish, onQuit }) {
     return () => clearTimeout(t);
   }, [timeLeft, config.mode]);
 
-  const next = () => {
-    const q = makeUniqueQuestion(config, usedCodes.current);
-    if (!q) return finish();
-    usedCodes.current = [q.target.code, ...usedCodes.current];
-    setQuestion(q); setSelected(null); setTick((t) => t + 1);
-  };
-
   const answer = (country) => {
     if (selected || done.current) return;
     const correct = country.code === question.target.code;
@@ -1045,6 +1097,14 @@ function Quiz({ config, onFinish, onQuit }) {
     if (correct) setScore(newScore);
     const newLives = !correct && config.mode === "survival" ? lives - 1 : lives;
     if (newLives !== lives) setLives(newLives);
+    const shouldContinue = !(
+      (config.mode === "classic" && newAnswers.length >= CLASSIC_TOTAL) ||
+      (config.mode === "survival" && newLives <= 0) ||
+      (config.mode === "timeAttack" && timeLeft <= 0) ||
+      usedCodes.current.length >= getQuizTargetPool(config).length
+    );
+    const nextQuestion = shouldContinue ? makeUniqueQuestion(config, usedCodes.current) : null;
+    const nextReady = preloadQuestionAssets(nextQuestion);
 
     setTimeout(() => {
       answersRef.current = newAnswers; scoreRef.current = newScore;
@@ -1052,7 +1112,14 @@ function Quiz({ config, onFinish, onQuit }) {
       if (config.mode === "survival" && newLives <= 0) return finish();
       if (config.mode === "timeAttack" && timeLeft <= 0) return finish();
       if (usedCodes.current.length >= getQuizTargetPool(config).length) return finish();
-      next();
+      if (!nextQuestion) return finish();
+      nextReady.then(() => {
+        if (done.current) return;
+        usedCodes.current = [nextQuestion.target.code, ...usedCodes.current];
+        setQuestion(nextQuestion);
+        setSelected(null);
+        setTick((t) => t + 1);
+      });
     }, 820);
   };
 
@@ -1099,11 +1166,15 @@ function Quiz({ config, onFinish, onQuit }) {
       )}
 
       <Scroll contentStyle={{ padding: hardMode ? 16 : 20, paddingTop: hardMode ? 12 : 22, gap: hardMode ? 14 : 20, alignItems: "center" }}>
-        <div key={tick} className="fadeIn" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: hardMode ? 14 : 20 }}>
+        <div key={tick} className="softFade" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: hardMode ? 14 : 20 }}>
           {question.type === "flagToName" ? (
             <React.Fragment>
               <Text style={[styles.prompt, hardMode && styles.promptCompact]}>IDENTIFY THE FLAG</Text>
-              <View style={[styles.flagFrame, hardMode && styles.flagFrameCompact]}><Img uri={flagUrl(question.target.code, 640)} style={styles.heroFlag} /></View>
+              <View style={[styles.flagSlot, hardMode && styles.flagSlotCompact]}>
+                <View style={[styles.flagFrame, hardMode && styles.flagFrameCompact]}>
+                  <Img uri={flagUrl(question.target.code, 640)} style={[styles.heroFlag, hardMode && styles.heroFlagCompact]} />
+                </View>
+              </View>
               <View style={{ width: "100%", gap: hardMode ? 9 : 10, marginTop: hardMode ? 4 : 2 }}>
                 {question.options.map((c, idx) => {
                   const st = optColor(c);
@@ -1166,7 +1237,6 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
   const dirLabel = DIRECTIONS.find((d) => d.key === config.type)?.label;
   const modeLabel = STYLES_MODE.find((m) => m.key === config.mode)?.label;
   const scopeLabel = SCOPES.find((s) => s.key === config.scope)?.label;
-  const correct = result.answers.filter((a) => a.correct);
   const missed = result.answers.filter((a) => !a.correct);
 
   return (
@@ -1207,22 +1277,8 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
           </View>
         </Row>
 
-        {correct.length > 0 && (
-          <Module label={`CORRECT // ${correct.length}`} tone="navy">
-            {correct.map((a, i) => (
-              <Row key={i} style={styles.revRow}>
-                <View style={styles.revFlag}><Img uri={flagUrl(a.target.code, 80)} style={styles.revFlagImg} /></View>
-                <View style={{ flex: 1, gap: 1 }}>
-                  <Text style={styles.revName}>{a.target.name}</Text>
-                  <Text style={styles.revStatus}>CORRECT</Text>
-                </View>
-                <Icon name="check" size={18} color={T.teal} stroke={3} />
-              </Row>
-            ))}
-          </Module>
-        )}
-        {missed.length > 0 && (
-          <Module label={`NEEDS REVIEW // ${missed.length}`} tone="red">
+        {missed.length > 0 ? (
+          <Module label={`MISSED // ${missed.length}`} tone="red">
             {missed.map((a, i) => (
               <Row key={i} style={styles.revRow}>
                 <View style={styles.revFlag}><Img uri={flagUrl(a.target.code, 80)} style={styles.revFlagImg} /></View>
@@ -1233,6 +1289,10 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
                 <Icon name="x" size={18} color={T.red} stroke={3} />
               </Row>
             ))}
+          </Module>
+        ) : (
+          <Module label="MISSED // 0" tone="teal">
+            <Text style={styles.authNotice}>No missed flags this round.</Text>
           </Module>
         )}
         <View style={{ height: 92 }} />
@@ -1555,9 +1615,12 @@ const styles = {
 
   prompt: { fontFamily: T.fontDisplay, fontSize: 17, fontWeight: 800, color: T.navy, letterSpacing: 0.5, textAlign: "center", textTransform: "uppercase" },
   promptCompact: { fontSize: 15.8 },
-  flagFrame: { width: "100%", maxWidth: 300, background: T.white, border: `3px solid ${T.navy}`, borderRadius: 6, padding: 8, boxShadow: SH_LG },
-  flagFrameCompact: { maxWidth: 258, border: `2px solid ${T.navy}`, padding: 6, boxShadow: SH_SM },
-  heroFlag: { width: "100%", height: "auto", display: "block", objectFit: "contain", border: `1px solid ${T.outlineVar}` },
+  flagSlot: { width: "100%", height: 214, alignItems: "center", justifyContent: "center" },
+  flagSlotCompact: { height: 170 },
+  flagFrame: { maxWidth: 300, maxHeight: 214, background: T.white, border: `3px solid ${T.navy}`, borderRadius: 6, padding: 8, boxShadow: SH_LG, alignSelf: "center", alignItems: "center", justifyContent: "center" },
+  flagFrameCompact: { maxWidth: 258, maxHeight: 170, border: `2px solid ${T.navy}`, padding: 6, boxShadow: SH_SM },
+  heroFlag: { maxWidth: 276, maxHeight: 190, width: "auto", height: "auto", display: "block", objectFit: "contain", border: `1px solid ${T.outlineVar}` },
+  heroFlagCompact: { maxWidth: 242, maxHeight: 154 },
   heroName: { fontFamily: T.fontDisplay, fontSize: 30, fontWeight: 900, color: T.navy, textAlign: "center", letterSpacing: -0.5, lineHeight: 1.1, textTransform: "uppercase" },
   heroNameCompact: { fontSize: 25, lineHeight: 1.04 },
 
@@ -1573,11 +1636,11 @@ const styles = {
   letterTxt: { fontFamily: T.fontMono, fontSize: 14, fontWeight: 700, color: T.onNavy },
   letterTxtCompact: { fontSize: 12.8 },
 
-  tile: { width: 150, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 6, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
-  tileCompact: { width: 138, padding: 6, borderRadius: 6 },
+  tile: { width: 150, height: 118, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 6, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
+  tileCompact: { width: 138, height: 112, padding: 6, borderRadius: 6 },
   tileCorrect: { borderColor: T.teal, boxShadow: `3px 3px 0 ${T.teal}` },
   tileWrong: { borderColor: T.red, boxShadow: `3px 3px 0 ${T.red}` },
-  tileImg: { width: "100%", height: "auto", display: "block", objectFit: "contain" },
+  tileImg: { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", display: "block", objectFit: "contain" },
   tileBadge: { position: "absolute", top: 9, right: 9, width: 26, height: 26, borderRadius: 13, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
   tileBadgeCompact: { top: 7, right: 7, width: 23, height: 23, borderRadius: 12 },
 
