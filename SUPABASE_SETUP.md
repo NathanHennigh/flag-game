@@ -72,3 +72,41 @@ http://localhost:5173/
 ```
 
 Google OAuth will not be pleasant from a raw `file://` URL, so use the local server.
+
+## 6. Google consent screen policy links
+
+Local URLs for testing:
+
+```text
+http://127.0.0.1:5173/privacy.html
+http://127.0.0.1:5173/terms.html
+```
+
+For Google's production consent screen, deploy these pages and use public HTTPS URLs, for example:
+
+```text
+https://your-domain.com/privacy.html
+https://your-domain.com/terms.html
+```
+
+Before publishing, replace `your-email@example.com` in both files with your real contact email and have the boilerplate reviewed for your actual use case.
+
+## 7. Progress database table
+
+Signed-in users sync quiz stats, flashcard reviews, SRS weights, and best scores to Supabase. Guests can still play, but guest progress stays in that browser.
+
+In Supabase Dashboard:
+
+1. Open your project.
+2. Go to SQL Editor.
+3. Create a new query.
+4. Paste the contents of `supabase-progress-schema.sql`.
+5. Click Run.
+
+The table name is:
+
+```text
+public.world_flags_progress
+```
+
+The policies allow each authenticated user to read, insert, and update only their own progress row.

@@ -42,6 +42,7 @@ const supabaseClient = hasSupabaseConfig && hasSupabaseSdk
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
     })
   : null;
+const PROGRESS_TABLE = "world_flags_progress";
 
 const authRedirectTo = () => {
   if (window.location.origin && window.location.origin !== "null") {
@@ -57,6 +58,14 @@ const authCallbackError = () => {
     (query && (query.get("error_description") || query.get("error"))) ||
     "";
 };
+
+const emptyProgress = () => ({ bestScores: {}, srsWeights: {}, quizHistory: [], reviewHistory: [] });
+const cleanProgress = (progress = {}) => ({
+  bestScores: progress.bestScores && typeof progress.bestScores === "object" ? progress.bestScores : {},
+  srsWeights: progress.srsWeights && typeof progress.srsWeights === "object" ? progress.srsWeights : {},
+  quizHistory: Array.isArray(progress.quizHistory) ? progress.quizHistory.slice(0, 500) : [],
+  reviewHistory: Array.isArray(progress.reviewHistory) ? progress.reviewHistory.slice(0, 1000) : [],
+});
 
 /* ──────────────────────────────────────────────────────────────────────────
    WORLD FLAGS — FLAG QUIZ
@@ -428,7 +437,7 @@ function BottomNav({ active, onChange }) {
   );
 }
 
-function AuthPanel({ session, authReady }) {
+function AuthPanel({ session, authReady, onGuest }) {
   const [mode, setMode] = useState("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -579,6 +588,15 @@ function AuthPanel({ session, authReady }) {
         <Icon name={mode === "signUp" ? "user" : "arrowRight"} size={17} color={T.onRed} stroke={2.4} />
         <Text style={styles.primaryTxt}>{busy ? "Working..." : mode === "signUp" ? "Create Account" : "Sign In"}</Text>
       </Touchable>
+      <Touchable type="button" className="press" onPress={onGuest} disabled={busy} style={styles.secondaryBtn}>
+        <Icon name="flag" size={17} color={T.navy} stroke={2.4} />
+        <Text style={styles.secondaryTxt}>Play as Guest</Text>
+      </Touchable>
+      <Row style={styles.authLinks}>
+        <a href="./privacy.html" target="_blank" rel="noreferrer" style={styles.authLink}>Privacy</a>
+        <Text style={styles.authNotice}>//</Text>
+        <a href="./terms.html" target="_blank" rel="noreferrer" style={styles.authLink}>Terms</a>
+      </Row>
       {notice && <Text style={styles.authNotice}>{notice}</Text>}
     </Module>
   );
@@ -758,7 +776,7 @@ function Learn({ srsWeights, onReview }) {
   );
 }
 
-function Account({ session, authReady, quizHistory, reviewHistory, srsWeights }) {
+function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, syncStatus, onGuest }) {
   const user = session && session.user;
   const recentRuns = quizHistory.filter((run) => run.ts >= weekAgo());
   const recentReviews = reviewHistory.filter((review) => review.ts >= weekAgo());
@@ -783,7 +801,16 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights })
     <View style={{ flex: 1, minHeight: 0 }}>
       <AppHeader kicker="ACCOUNT" title="PROFILE" />
       <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 16 }}>
-        <AuthPanel session={session} authReady={authReady} />
+        <AuthPanel session={session} authReady={authReady} onGuest={onGuest} />
+        <Module label="SYNC" tone={user ? "teal" : "navy"}>
+          <Row style={{ alignItems: "center", gap: 12 }}>
+            <View style={styles.authAvatar}><Icon name={user ? "check" : "flag"} size={20} color={T.onNavy} stroke={2.4} /></View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.optTitle}>{user ? "Database Sync" : "Guest Mode"}</Text>
+              <Text style={styles.optDesc}>{user ? syncStatus : "You can play without an account. Guest stats stay on this browser only until you sign in."}</Text>
+            </View>
+          </Row>
+        </Module>
 
         <Module label="ACCURACY">
           <Row style={{ gap: 9 }}>
@@ -1130,7 +1157,10 @@ function App() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(!supabaseClient);
   const [storageReady, setStorageReady] = useState(false);
+  const [syncStatus, setSyncStatus] = useState("Sign in to sync stats and progress.");
   const loadedStorageKey = useRef(null);
+  const loadedRemoteUser = useRef(null);
+  const saveTimer = useRef(null);
 
   useEffect(() => {
     if (!supabaseClient) return;
@@ -1153,16 +1183,18 @@ function App() {
   }, []);
 
   const storageKey = `world-flags:${session && session.user ? session.user.id : "guest"}`;
+  const userId = session && session.user ? session.user.id : null;
 
   useEffect(() => {
     setStorageReady(false);
+    loadedRemoteUser.current = null;
     try {
       const raw = window.localStorage.getItem(storageKey);
-      const saved = raw ? JSON.parse(raw) : {};
-      setBestScores(saved.bestScores || {});
-      setSrsWeights(saved.srsWeights || {});
-      setQuizHistory(saved.quizHistory || []);
-      setReviewHistory(saved.reviewHistory || []);
+      const saved = cleanProgress(raw ? JSON.parse(raw) : emptyProgress());
+      setBestScores(saved.bestScores);
+      setSrsWeights(saved.srsWeights);
+      setQuizHistory(saved.quizHistory);
+      setReviewHistory(saved.reviewHistory);
     } catch (_err) {
       setBestScores({});
       setSrsWeights({});
@@ -1180,8 +1212,76 @@ function App() {
     } catch (_err) {}
   }, [storageReady, storageKey, bestScores, srsWeights, quizHistory, reviewHistory]);
 
+  useEffect(() => {
+    if (!supabaseClient || !userId || !storageReady) {
+      if (!userId) setSyncStatus("Sign in to sync stats and progress.");
+      return;
+    }
+
+    let cancelled = false;
+    setSyncStatus("Loading database progress...");
+    supabaseClient
+      .from(PROGRESS_TABLE)
+      .select("progress")
+      .eq("user_id", userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          setSyncStatus(`Database sync needs setup: ${error.message}`);
+          return;
+        }
+        if (data && data.progress) {
+          const saved = cleanProgress(data.progress);
+          setBestScores(saved.bestScores);
+          setSrsWeights(saved.srsWeights);
+          setQuizHistory(saved.quizHistory);
+          setReviewHistory(saved.reviewHistory);
+          try {
+            window.localStorage.setItem(storageKey, JSON.stringify(saved));
+          } catch (_err) {}
+        }
+        loadedRemoteUser.current = userId;
+        if (data && data.progress) {
+          setSyncStatus("Stats and progress loaded from Supabase.");
+        } else {
+          const progress = cleanProgress({ bestScores, srsWeights, quizHistory, reviewHistory });
+          supabaseClient
+            .from(PROGRESS_TABLE)
+            .upsert({ user_id: userId, progress }, { onConflict: "user_id" })
+            .then(({ error: saveError }) => {
+              if (cancelled) return;
+              setSyncStatus(saveError
+                ? `Database save failed: ${saveError.message}`
+                : "Stats and progress are now saving to Supabase.");
+            });
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [userId, storageReady, storageKey]);
+
+  useEffect(() => {
+    if (!supabaseClient || !userId || loadedRemoteUser.current !== userId) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    const progress = cleanProgress({ bestScores, srsWeights, quizHistory, reviewHistory });
+    saveTimer.current = setTimeout(() => {
+      supabaseClient
+        .from(PROGRESS_TABLE)
+        .upsert({ user_id: userId, progress }, { onConflict: "user_id" })
+        .then(({ error }) => {
+          if (error) setSyncStatus(`Database save failed: ${error.message}`);
+          else setSyncStatus(`Saved to Supabase at ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`);
+        });
+    }, 500);
+    return () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    };
+  }, [userId, bestScores, srsWeights, quizHistory, reviewHistory]);
+
   const start = () => { setRunId((r) => r + 1); setQuizScreen("quiz"); setTab("quiz"); };
   const again = () => { setRunId((r) => r + 1); setQuizScreen("quiz"); setTab("quiz"); };
+  const continueAsGuest = () => { setTab("learn"); setSyncStatus("Guest mode active. Stats and progress stay on this browser."); };
 
   const updateSrs = (code, multiplier) => {
     setSrsWeights((w) => {
@@ -1225,7 +1325,7 @@ function App() {
   const content = tab === "learn"
     ? <Learn srsWeights={srsWeights} onReview={handleFlashcardReview} />
     : tab === "account"
-      ? <Account session={session} authReady={authReady} quizHistory={quizHistory} reviewHistory={reviewHistory} srsWeights={srsWeights} />
+      ? <Account session={session} authReady={authReady} quizHistory={quizHistory} reviewHistory={reviewHistory} srsWeights={srsWeights} syncStatus={syncStatus} onGuest={continueAsGuest} />
       : quizScreen === "quiz"
         ? <Quiz key={runId} config={config} onFinish={handleFinish} onQuit={() => setQuizScreen("home")} />
         : quizScreen === "results"
@@ -1310,6 +1410,8 @@ const styles = {
   authDividerLine: { flex: 1, height: 2, background: T.outlineVar },
   authDividerTxt: { fontFamily: T.fontMono, fontSize: 10, fontWeight: 700, color: T.inkDim, letterSpacing: 1.3 },
   authNotice: { fontFamily: T.fontMono, fontSize: 11, color: T.inkDim, lineHeight: 1.45, letterSpacing: 0.2 },
+  authLinks: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  authLink: { fontFamily: T.fontMono, fontSize: 11, fontWeight: 700, color: T.navy, letterSpacing: 1, textTransform: "uppercase", textDecoration: "underline" },
   disabledBtn: { opacity: 0.58, boxShadow: `2px 2px 0 ${T.navy}` },
 
   footer: { padding: 16, paddingTop: 12, background: T.bg, borderTop: `2px solid ${T.navy}` },
