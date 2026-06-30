@@ -439,6 +439,7 @@ function makeQuestion(config, recent, weights = {}) {
 }
 
 function getQuizTargetPool(config) {
+  if (config.mode === "survival") return getFlashcardPool(config.scope);
   return config.scope === "similar" ? getStudyPool(config) : getPool(config);
 }
 
@@ -1108,6 +1109,7 @@ function Quiz({ config, onFinish, onQuit }) {
   const [lives, setLives] = useState(3);
   const [answers, setAnswers] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [pendingAdvance, setPendingAdvance] = useState(null);
   const [timeLeft, setTimeLeft] = useState(60);
   const [tick, setTick] = useState(0);
 
@@ -1128,6 +1130,26 @@ function Quiz({ config, onFinish, onQuit }) {
     return () => clearTimeout(t);
   }, [timeLeft, config.mode]);
 
+  const advanceAfterAnswer = (advance) => {
+    if (!advance || done.current) return;
+    setPendingAdvance(null);
+    const { newAnswers, newScore, newLives, nextQuestion, nextReady } = advance;
+    answersRef.current = newAnswers; scoreRef.current = newScore;
+    if (config.mode === "classic" && newAnswers.length >= CLASSIC_TOTAL) return finish();
+    if (config.mode === "survival" && newLives <= 0) return finish();
+    if (config.mode === "timeAttack" && timeLeft <= 0) return finish();
+    if (usedCodes.current.length >= getQuizTargetPool(config).length) return finish();
+    if (!nextQuestion) return finish();
+    const maxPreloadWait = config.mode === "timeAttack" ? 20 : 70;
+    Promise.race([nextReady, wait(maxPreloadWait)]).then(() => {
+      if (done.current) return;
+      usedCodes.current = [nextQuestion.target.code, ...usedCodes.current];
+      setQuestion(nextQuestion);
+      setSelected(null);
+      setTick((t) => t + 1);
+    });
+  };
+
   const answer = (country) => {
     if (selected || done.current) return;
     const correct = country.code === question.target.code;
@@ -1145,25 +1167,16 @@ function Quiz({ config, onFinish, onQuit }) {
       usedCodes.current.length >= getQuizTargetPool(config).length
     );
     const nextQuestion = shouldContinue ? makeUniqueQuestion(config, usedCodes.current) : null;
-    const nextReady = preloadQuestionAssets(nextQuestion);
+    const advance = { newAnswers, newScore, newLives, nextQuestion, nextReady: preloadQuestionAssets(nextQuestion) };
+    const pauseForReview = !correct && (config.mode === "classic" || config.mode === "survival");
 
-    const advanceDelay = config.mode === "timeAttack" ? 25 : 150;
-    setTimeout(() => {
-      answersRef.current = newAnswers; scoreRef.current = newScore;
-      if (config.mode === "classic" && newAnswers.length >= CLASSIC_TOTAL) return finish();
-      if (config.mode === "survival" && newLives <= 0) return finish();
-      if (config.mode === "timeAttack" && timeLeft <= 0) return finish();
-      if (usedCodes.current.length >= getQuizTargetPool(config).length) return finish();
-      if (!nextQuestion) return finish();
-      const maxPreloadWait = config.mode === "timeAttack" ? 0 : 50;
-      Promise.race([nextReady, wait(maxPreloadWait)]).then(() => {
-        if (done.current) return;
-        usedCodes.current = [nextQuestion.target.code, ...usedCodes.current];
-        setQuestion(nextQuestion);
-        setSelected(null);
-        setTick((t) => t + 1);
-      });
-    }, advanceDelay);
+    if (pauseForReview) {
+      setPendingAdvance(advance);
+      return;
+    }
+
+    const advanceDelay = config.mode === "timeAttack" ? 45 : 240;
+    setTimeout(() => advanceAfterAnswer(advance), advanceDelay);
   };
 
   const optColor = (c) => {
@@ -1265,6 +1278,11 @@ function Quiz({ config, onFinish, onQuit }) {
           {selected && (
             <View style={[styles.feedbackBox, hardMode && styles.feedbackBoxCompact, { background: selected.code === question.target.code ? T.teal : T.red }]}>
               <Text style={[styles.feedbackTxt, hardMode && styles.feedbackTxtCompact]}>{selected.code === question.target.code ? "CORRECT" : `INCORRECT - ${question.target.name.toUpperCase()}`}</Text>
+              {pendingAdvance && (
+                <Touchable className="press" onPress={() => advanceAfterAnswer(pendingAdvance)} style={styles.continueBtn}>
+                  <Text style={styles.continueTxt}>Continue</Text>
+                </Touchable>
+              )}
             </View>
           )}
         </div>
@@ -1703,10 +1721,12 @@ const styles = {
   tileBadge: { position: "absolute", top: 9, right: 9, width: 26, height: 26, borderRadius: 13, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
   tileBadgeCompact: { top: 7, right: 7, width: 23, height: 23, borderRadius: 12 },
 
-  feedbackBox: { borderRadius: 7, border: `2px solid ${T.navy}`, paddingTop: 9, paddingBottom: 9, paddingLeft: 18, paddingRight: 18, boxShadow: SH_SM },
+  feedbackBox: { borderRadius: 7, border: `2px solid ${T.navy}`, paddingTop: 9, paddingBottom: 9, paddingLeft: 18, paddingRight: 18, boxShadow: SH_SM, alignItems: "center", gap: 10 },
   feedbackBoxCompact: { paddingTop: 6, paddingBottom: 6, paddingLeft: 12, paddingRight: 12 },
   feedbackTxt: { fontFamily: T.fontMono, fontSize: 13.5, fontWeight: 700, color: "#fff", letterSpacing: 1, textTransform: "uppercase" },
   feedbackTxtCompact: { fontSize: 11.5 },
+  continueBtn: { background: T.white, border: `2px solid ${T.navy}`, borderRadius: 7, paddingTop: 9, paddingBottom: 9, paddingLeft: 20, paddingRight: 20, boxShadow: SH_SM, alignItems: "center" },
+  continueTxt: { fontFamily: T.fontMono, fontSize: 12.5, fontWeight: 700, color: T.navy, textTransform: "uppercase", letterSpacing: 1.1 },
 
   flashStage: { width: "100%", height: 318, perspective: 1000 },
   flashInner: { width: "100%", height: "100%", position: "relative", transformStyle: "preserve-3d", transition: "transform .16s cubic-bezier(.2,.7,.3,1)" },
