@@ -374,6 +374,13 @@ const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}
 const accuracy = (r) => (r.total ? Math.round((r.score / r.total) * 100) : 0);
 const weekAgo = () => Date.now() - 7 * 24 * 60 * 60 * 1000;
 const avg = (nums) => nums.length ? nums.reduce((sum, n) => sum + n, 0) / nums.length : 0;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const preloadFlag = (country, w = 640) => new Promise((resolve) => {
+  const img = new Image();
+  img.onload = resolve;
+  img.onerror = resolve;
+  img.src = flagUrl(country.code, w);
+});
 const calcAccuracy = (runs) => {
   const totals = runs.reduce((acc, run) => ({
     score: acc.score + (run.score || 0),
@@ -699,16 +706,16 @@ function Home({ config, setConfig, onStart, bestScores }) {
             <Text style={styles.bestValue}>{best}</Text>
           </Row>
         )}
-        <View style={{ height: 92 }} />
-      </Scroll>
 
-      <View style={styles.footer}>
-        <Touchable className="press" onPress={onStart} style={styles.primaryBtn}>
-          <Icon name="starFilled" size={17} color={T.onRed} />
-          <Text style={styles.primaryTxt}>Start Quiz</Text>
-        </Touchable>
+        <View style={styles.setupCtaWrap}>
+          <Touchable className="press" onPress={onStart} style={[styles.primaryBtn, styles.setupCtaBtn]}>
+            <Icon name="starFilled" size={15} color={T.onRed} />
+            <Text style={styles.primaryTxt}>Start Quiz</Text>
+          </Touchable>
+        </View>
+        <View style={{ height: 18 }} />
+      </Scroll>
       </View>
-    </View>
   );
 }
 
@@ -765,15 +772,17 @@ function Learn({ srsWeights, onReview }) {
     const current = srsWeights[card.code] || 1;
     const nextWeight = Math.max(0.1, Math.min(10, current * multipliers[rating]));
     const nextWeights = { ...srsWeights, [card.code]: nextWeight };
+    const nextCard = makeCard(nextWeights);
+    const nextReady = preloadFlag(nextCard);
     onReview(card, rating, learnConfig);
     setReviewed((n) => n + 1);
     setTransitioning(true);
     setAnswerReady(false);
     setRevealed(false);
-    setTimeout(() => {
-      setCard(makeCard(nextWeights));
+    Promise.all([nextReady, wait(460)]).then(() => {
+      setCard(nextCard);
       setTransitioning(false);
-    }, 460);
+    });
   };
 
   if (screen === "study" && card) {
@@ -788,7 +797,7 @@ function Learn({ srsWeights, onReview }) {
         </Row>
 
         <Scroll contentStyle={{ padding: 20, paddingTop: 22, gap: 18, alignItems: "center" }}>
-          <Module label="FLASHCARD" tone={revealed ? "teal" : "navy"} right={<Text style={styles.authPill}>{poolCount}</Text>} style={{ width: "100%" }}>
+          <Module label="FLASHCARD" tone="navy" style={{ width: "100%" }}>
             <View style={styles.flashStage}>
               <View style={[styles.flashInner, revealed && styles.flashInnerOn]}>
                 <View style={styles.flashFace}>
@@ -851,15 +860,15 @@ function Learn({ srsWeights, onReview }) {
           />
         </Module>
 
-        <View style={{ height: 92 }} />
+        <View style={styles.setupCtaWrap}>
+          <Touchable className="press" onPress={start} style={[styles.primaryBtn, styles.setupCtaBtn]}>
+            <Icon name="starFilled" size={15} color={T.onRed} />
+            <Text style={styles.primaryTxt}>Start Learning</Text>
+          </Touchable>
+        </View>
+        <View style={{ height: 18 }} />
       </Scroll>
-      <View style={styles.footer}>
-        <Touchable className="press" onPress={start} style={styles.primaryBtn}>
-          <Icon name="starFilled" size={17} color={T.onRed} />
-          <Text style={styles.primaryTxt}>Start Learning</Text>
-        </Touchable>
       </View>
-    </View>
   );
 }
 
@@ -1515,6 +1524,8 @@ const styles = {
 
   footer: { padding: 16, paddingTop: 12, background: T.bg, borderTop: `2px solid ${T.navy}` },
   primaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, background: T.red, borderRadius: 8, border: `2px solid ${T.navy}`, paddingTop: 15, paddingBottom: 15, boxShadow: SH },
+  setupCtaWrap: { alignItems: "center", paddingTop: 8, paddingBottom: 6 },
+  setupCtaBtn: { width: "78%", paddingTop: 12, paddingBottom: 12, boxShadow: SH_SM },
   primaryTxt: { fontFamily: T.fontMono, fontSize: 14.5, fontWeight: 700, color: T.onRed, textTransform: "uppercase", letterSpacing: 1.5 },
   secondaryBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, background: T.panel, borderRadius: 8, border: `2px solid ${T.navy}`, paddingTop: 15, paddingBottom: 15, boxShadow: SH },
   secondaryTxt: { fontFamily: T.fontMono, fontSize: 14.5, fontWeight: 700, color: T.navy, textTransform: "uppercase", letterSpacing: 1.5 },
