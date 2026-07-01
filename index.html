@@ -578,7 +578,7 @@ function BottomNav({ active, onChange }) {
   );
 }
 
-function AuthPanel({ session, authReady, onGuest }) {
+function AuthPanel({ session, authReady, onGuest, showGuest = false }) {
   const [mode, setMode] = useState("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -729,12 +729,27 @@ function AuthPanel({ session, authReady, onGuest }) {
         <Icon name={mode === "signUp" ? "user" : "arrowRight"} size={17} color={T.onRed} stroke={2.4} />
         <Text style={styles.primaryTxt}>{busy ? "Working..." : mode === "signUp" ? "Create Account" : "Sign In"}</Text>
       </Touchable>
-      <Touchable type="button" className="press" onPress={onGuest} disabled={busy} style={styles.secondaryBtn}>
-        <Icon name="flag" size={17} color={T.navy} stroke={2.4} />
-        <Text style={styles.secondaryTxt}>Play as Guest</Text>
-      </Touchable>
+      {showGuest && (
+        <Touchable type="button" className="press" onPress={onGuest} disabled={busy} style={styles.secondaryBtn}>
+          <Icon name="flag" size={17} color={T.navy} stroke={2.4} />
+          <Text style={styles.secondaryTxt}>Play as Guest</Text>
+        </Touchable>
+      )}
       {notice && <Text style={styles.authNotice}>{notice}</Text>}
     </Module>
+  );
+}
+
+function AuthModal({ session, authReady, onClose, onGuest }) {
+  return (
+    <View style={styles.authOverlay}>
+      <View style={styles.authModalShell}>
+        <Touchable type="button" className="press" onPress={onClose} style={styles.authModalClose}>
+          <Icon name="x" size={18} color={T.navy} stroke={2.7} />
+        </Touchable>
+        <AuthPanel session={session} authReady={authReady} onGuest={onGuest} showGuest />
+      </View>
+    </View>
   );
 }
 
@@ -1013,7 +1028,7 @@ function Learn({ srsWeights, missedCodes, onReview }) {
   );
 }
 
-function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, onGuest }) {
+function Account({ session, authReady, quizHistory, reviewHistory, srsWeights }) {
   const recentRuns = quizHistory.filter((run) => run.ts >= weekAgo());
   const recentReviews = reviewHistory.filter((review) => review.ts >= weekAgo());
   const uniqueReviewed = new Set(reviewHistory.map((review) => review.code)).size;
@@ -1054,7 +1069,7 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, o
           </Row>
         </Module>
 
-        <Module label="MEMORY" tone="teal">
+        <Module label="FLASHCARDS" tone="teal">
           <Row style={{ gap: 9 }}>
             <View style={[styles.statBox, { flex: 1 }]}>
               <Text style={[styles.statBig, { color: T.teal }]}>{memoryScore}<Text style={styles.statUnit}>%</Text></Text>
@@ -1099,7 +1114,7 @@ function Account({ session, authReady, quizHistory, reviewHistory, srsWeights, o
           )}
         </Module>
 
-        <AuthPanel session={session} authReady={authReady} onGuest={onGuest} />
+        <AuthPanel session={session} authReady={authReady} />
 
         <Row style={styles.legalLinks}>
           <a href="./privacy.html" target="_blank" rel="noreferrer" style={styles.legalLink}>Privacy</a>
@@ -1393,7 +1408,7 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
 
 /* ---------- APP ------------------------------------------------------------ */
 function App() {
-  const [tab, setTab] = useState("account");
+  const [tab, setTab] = useState("learn");
   const [quizScreen, setQuizScreen] = useState("home");
   const [config, setConfig] = useState({ type: "flagToName", scope: "world", difficulty: "medium", mode: "classic" });
   const [result, setResult] = useState(null);
@@ -1406,6 +1421,7 @@ function App() {
   const [runId, setRunId] = useState(0);
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(!supabaseClient);
+  const [authModalDismissed, setAuthModalDismissed] = useState(false);
   const [storageReady, setStorageReady] = useState(false);
   const [syncStatus, setSyncStatus] = useState("Sign in to sync stats and progress.");
   const loadedStorageKey = useRef(null);
@@ -1534,7 +1550,11 @@ function App() {
 
   const start = () => { setRunId((r) => r + 1); setQuizScreen("quiz"); setTab("quiz"); };
   const again = () => { setRunId((r) => r + 1); setQuizScreen("quiz"); setTab("quiz"); };
-  const continueAsGuest = () => { setTab("learn"); setSyncStatus("Guest mode active. Stats and progress stay on this browser."); };
+  const continueAsGuest = () => {
+    setAuthModalDismissed(true);
+    setTab("learn");
+    setSyncStatus("Guest mode active. Stats and progress stay on this browser.");
+  };
 
   const updateSrs = (code, multiplier) => {
     setSrsWeights((w) => {
@@ -1586,7 +1606,7 @@ function App() {
   const content = tab === "learn"
     ? <Learn srsWeights={srsWeights} missedCodes={missedCodes} onReview={handleFlashcardReview} />
     : tab === "account"
-      ? <Account session={session} authReady={authReady} quizHistory={quizHistory} reviewHistory={reviewHistory} srsWeights={srsWeights} onGuest={continueAsGuest} />
+      ? <Account session={session} authReady={authReady} quizHistory={quizHistory} reviewHistory={reviewHistory} srsWeights={srsWeights} />
       : quizScreen === "quiz"
         ? <Quiz key={runId} config={config} onFinish={handleFinish} onQuit={() => setQuizScreen("home")} />
         : quizScreen === "results"
@@ -1598,6 +1618,14 @@ function App() {
       <View style={styles.app}>
         <View style={styles.mainPane}>{content}</View>
         <BottomNav active={tab} onChange={setTab} />
+        {authReady && !session && !authModalDismissed && (
+          <AuthModal
+            session={session}
+            authReady={authReady}
+            onClose={() => setAuthModalDismissed(true)}
+            onGuest={continueAsGuest}
+          />
+        )}
       </View>
     </View>
   );
@@ -1671,6 +1699,9 @@ const styles = {
   authDividerLine: { flex: 1, height: 2, background: T.outlineVar },
   authDividerTxt: { fontFamily: T.fontMono, fontSize: 10, fontWeight: 700, color: T.inkDim, letterSpacing: 1.3 },
   authNotice: { fontFamily: T.fontMono, fontSize: 11, color: T.inkDim, lineHeight: 1.45, letterSpacing: 0.2 },
+  authOverlay: { position: "absolute", inset: 0, zIndex: 50, background: "rgba(0, 54, 80, 0.58)", alignItems: "center", justifyContent: "center", padding: 18 },
+  authModalShell: { width: "100%", maxWidth: 392, position: "relative", background: "transparent" },
+  authModalClose: { position: "absolute", top: -14, right: -10, zIndex: 2, width: 38, height: 38, borderRadius: 9, background: T.paper, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
   legalLinks: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, paddingTop: 2, paddingBottom: 4 },
   legalLink: { fontFamily: T.fontMono, fontSize: 10.5, fontWeight: 700, color: T.outline, letterSpacing: 0.8, textTransform: "uppercase", textDecoration: "underline" },
   legalSep: { fontFamily: T.fontMono, fontSize: 10.5, color: T.outlineVar },
