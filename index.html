@@ -896,7 +896,7 @@ function Learn({ srsWeights, missedCodes, onReview }) {
     setTransitioning(false);
     setReviewed(0);
     setScreen("setup");
-  }, [learnScopeId, missedCodes.join("|")]);
+  }, [learnScopeId]);
 
   const setScope = (scope) => setLearnConfig((c) => ({ ...c, scope: toggleScope(c.scope, scope, { allowMissed: true }) }));
 
@@ -1586,6 +1586,12 @@ function App() {
   const handleFlashcardReview = (country, rating, learnConfig) => {
     const multipliers = { tricky: 1.8, good: 0.7, easy: 0.35 };
     updateSrs(country.code, multipliers[rating]);
+    const confidentReviews = reviewHistory.filter((review) =>
+      review.code === country.code && (review.rating === "good" || review.rating === "easy")
+    ).length + (rating === "good" || rating === "easy" ? 1 : 0);
+    if (rating === "easy" || confidentReviews >= 2) {
+      setMissedCodes((codes) => codes.filter((code) => code !== country.code));
+    }
     setReviewHistory((history) => [{
       ts: Date.now(),
       code: country.code,
