@@ -160,6 +160,7 @@ const fade = (hex, a) => {
   const h = hex.replace("#", ""); const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 };
+const FLAG_EDGE = `1px solid ${fade(T.navy, 0.34)}`;
 
 /* ---------- custom icon set (all graphics are hand-drawn SVG) -------------- */
 const CONT = {
@@ -1835,9 +1836,9 @@ const styles = {
   flagSlotCompact: { height: 178 },
   flagFrame: { maxWidth: 300, maxHeight: "100%", background: T.white, border: `3px solid ${T.navy}`, borderRadius: 6, padding: 8, boxShadow: SH_LG, alignSelf: "center", alignItems: "center", justifyContent: "center", overflow: "visible" },
   flagFrameCompact: { maxWidth: 264, maxHeight: "100%", border: `2px solid ${T.navy}`, padding: 6, boxShadow: SH_SM },
-  quizFlagImg: { maxWidth: 274, maxHeight: 188, width: "auto", height: "auto", display: "block", objectFit: "contain", border: `1px solid ${T.outlineVar}`, flexShrink: 1 },
+  quizFlagImg: { maxWidth: 274, maxHeight: 188, width: "auto", height: "auto", display: "block", objectFit: "contain", border: FLAG_EDGE, flexShrink: 1 },
   quizFlagImgCompact: { maxWidth: 246, maxHeight: 150 },
-  heroFlag: { maxWidth: 276, maxHeight: 190, width: "auto", height: "auto", display: "block", objectFit: "contain", border: `1px solid ${T.outlineVar}` },
+  heroFlag: { maxWidth: 276, maxHeight: 190, width: "auto", height: "auto", display: "block", objectFit: "contain", border: FLAG_EDGE },
   heroFlagCompact: { maxWidth: 242, maxHeight: 154 },
   heroName: { fontFamily: T.fontDisplay, fontSize: 30, fontWeight: 900, color: T.navy, textAlign: "center", letterSpacing: -0.5, lineHeight: 1.1, textTransform: "uppercase" },
   heroNameCompact: { fontSize: 25, lineHeight: 1.04 },
@@ -1854,11 +1855,11 @@ const styles = {
   letterTxt: { fontFamily: T.fontMono, fontSize: 14, fontWeight: 700, color: T.onNavy },
   letterTxtCompact: { fontSize: 12.8 },
 
-  tile: { width: 150, height: 118, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 6, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
-  tileCompact: { width: 138, height: 112, padding: 6, borderRadius: 6 },
+  tile: { width: 160, height: 126, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 6, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
+  tileCompact: { width: 148, height: 118, padding: 6, borderRadius: 6 },
   tileCorrect: { borderColor: T.teal, boxShadow: `3px 3px 0 ${T.teal}` },
   tileWrong: { borderColor: T.red, boxShadow: `3px 3px 0 ${T.red}` },
-  tileImg: { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", display: "block", objectFit: "contain" },
+  tileImg: { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", display: "block", objectFit: "contain", border: FLAG_EDGE },
   tileBadge: { position: "absolute", top: 9, right: 9, width: 26, height: 26, borderRadius: 13, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
   tileBadgeCompact: { top: 7, right: 7, width: 23, height: 23, borderRadius: 12 },
 
@@ -1912,7 +1913,7 @@ const styles = {
 
   revRow: { flexDirection: "row", alignItems: "center", gap: 11, paddingTop: 8, paddingBottom: 8, borderBottom: `1px solid ${T.outlineVar}` },
   revFlag: { width: 46, height: 32, border: `2px solid ${T.navy}`, borderRadius: 3, alignItems: "center", justifyContent: "center", overflow: "hidden", background: T.white },
-  revFlagImg: { maxWidth: 42, maxHeight: 28, display: "block" },
+  revFlagImg: { maxWidth: 42, maxHeight: 28, display: "block", border: FLAG_EDGE },
   revName: { fontFamily: T.fontDisplay, fontSize: 14, fontWeight: 700, color: T.navy, textTransform: "uppercase" },
   revStatus: { fontFamily: T.fontMono, fontSize: 9.5, color: T.teal, letterSpacing: 0.4, textTransform: "uppercase" },
 };
