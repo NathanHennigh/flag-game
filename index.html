@@ -1195,6 +1195,7 @@ function Quiz({ config, onFinish, onQuit }) {
   const [tick, setTick] = useState(0);
 
   const answersRef = useRef([]); const scoreRef = useRef(0); const done = useRef(false); const quizScrollRef = useRef(null);
+  const answerLocked = useRef(false); const advanceLocked = useRef(false);
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { scoreRef.current = score; }, [score]);
   useEffect(() => {
@@ -1227,7 +1228,8 @@ function Quiz({ config, onFinish, onQuit }) {
   }, [timeLeft, config.mode, questionReady]);
 
   const advanceAfterAnswer = (advance) => {
-    if (!advance || done.current) return;
+    if (!advance || done.current || advanceLocked.current) return;
+    advanceLocked.current = true;
     setPendingAdvance(null);
     const { newAnswers, newScore, newLives, nextQuestion, nextReady } = advance;
     answersRef.current = newAnswers; scoreRef.current = newScore;
@@ -1244,11 +1246,14 @@ function Quiz({ config, onFinish, onQuit }) {
       setQuestion(nextQuestion);
       setSelected(null);
       setTick((t) => t + 1);
+      answerLocked.current = false;
+      advanceLocked.current = false;
     });
   };
 
   const answer = (country) => {
-    if (!questionReady || selected || done.current || !question) return;
+    if (answerLocked.current || !questionReady || selected || done.current || !question) return;
+    answerLocked.current = true;
     const correct = country.code === question.target.code;
     setSelected(country);
     const newAnswers = [...answers, { target: question.target, picked: country, correct }];
