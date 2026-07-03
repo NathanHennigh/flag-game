@@ -1645,7 +1645,7 @@ function BattlePlayerRow({ player, rank }) {
   );
 }
 
-function BattleRace({ questions, players, onProgress, onFinish, onQuit }) {
+function BattleRace({ questions, players, startedAt, onProgress, onFinish, onQuit }) {
   const total = questions.length;
   const [index, setIndex] = useState(0);
   const [score, setScore] = useState(0);
@@ -1653,7 +1653,7 @@ function BattleRace({ questions, players, onProgress, onFinish, onQuit }) {
   const [questionReady, setQuestionReady] = useState(false);
   const [tick, setTick] = useState(0);
   const answersRef = useRef([]);
-  const startedAtRef = useRef(Date.now());
+  const startedAtRef = useRef(startedAt || Date.now());
   const answerLocked = useRef(false);
   const done = useRef(false);
   const question = questions[index];
@@ -1800,11 +1800,14 @@ function BattleRoom({ code, isHost, name, onLeave }) {
   const clientIdRef = useRef(randomClientId());
   const channelRef = useRef(null);
   const meMetaRef = useRef({ name, host: isHost, joinedAt: Date.now(), score: 0, index: 0, finished: false, elapsedMs: null });
+  const activeGameIdRef = useRef(null);
+  const completedGameIdRef = useRef(null);
   const [players, setPlayers] = useState([]);
   const [status, setStatus] = useState("connecting"); // connecting | connected | full | error
   const [phase, setPhase] = useState("lobby"); // lobby | racing | done
   const [gameConfig, setGameConfig] = useState({ type: "flagToName", scope: "world", difficulty: "medium" });
   const [questions, setQuestions] = useState(null);
+  const [battleStartedAt, setBattleStartedAt] = useState(null);
   const [myResult, setMyResult] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -1812,6 +1815,22 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     navigator.clipboard?.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 1600);
+  };
+
+  const beginBattle = (payload) => {
+    if (!payload || payload.type !== "start" || !Array.isArray(payload.questions) || !payload.questions.length) return;
+    const gameId = payload.gameId || `${payload.startedAt || Date.now()}`;
+    if (activeGameIdRef.current === gameId) return;
+    if (completedGameIdRef.current === gameId) return;
+    activeGameIdRef.current = gameId;
+    completedGameIdRef.current = null;
+    meMetaRef.current = { ...meMetaRef.current, score: 0, index: 0, finished: false, elapsedMs: null };
+    channelRef.current?.track(meMetaRef.current);
+    setGameConfig(payload.config || gameConfig);
+    setQuestions(payload.questions);
+    setBattleStartedAt(payload.startedAt || Date.now());
+    setMyResult(null);
+    setPhase("racing");
   };
 
   useEffect(() => {
@@ -1833,19 +1852,23 @@ function BattleRoom({ code, isHost, name, onLeave }) {
         .map((p) => p.id === clientIdRef.current
           ? { ...p, ...meMetaRef.current, __isMe: true }
           : { ...p, __isMe: false });
-      setPlayers(list);
+      const hasMe = list.some((p) => p.id === clientIdRef.current);
+      const nextList = hasMe
+        ? list
+        : [{ id: clientIdRef.current, ...meMetaRef.current, __isMe: true }, ...list]
+            .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+      setPlayers(nextList);
+      const hostState = nextList.find((p) => p.host && p.roomState?.type === "start")?.roomState;
+      if (hostState && hostState.gameId !== completedGameIdRef.current) beginBattle(hostState);
     };
 
     channel.on("broadcast", { event: "battle" }, ({ payload }) => {
       if (!payload || payload.type !== "start") return;
-      meMetaRef.current = { ...meMetaRef.current, score: 0, index: 0, finished: false, elapsedMs: null };
-      channel.track(meMetaRef.current);
-      setGameConfig(payload.config);
-      setQuestions(payload.questions);
-      setMyResult(null);
-      setPhase("racing");
+      beginBattle(payload);
     });
     channel.on("presence", { event: "sync" }, syncPlayers);
+    channel.on("presence", { event: "join" }, syncPlayers);
+    channel.on("presence", { event: "leave" }, syncPlayers);
 
     channel.subscribe(async (subStatus) => {
       if (cancelled) return;
@@ -1857,6 +1880,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
         }
         await channel.track(meMetaRef.current);
         setStatus("connected");
+        syncPlayers();
       } else if (subStatus === "CHANNEL_ERROR" || subStatus === "TIMED_OUT") {
         setStatus("error");
       }
@@ -1879,20 +1903,42 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     meMetaRef.current = { ...meMetaRef.current, ...patch };
     channelRef.current?.track(meMetaRef.current);
     // Don't wait on a network round-trip to show my own progress.
-    setPlayers((list) => list.map((p) => (p.__isMe ? { ...p, ...meMetaRef.current } : p)));
+    setPlayers((list) => {
+      let foundMe = false;
+      const next = list.map((p) => {
+        if (!p.__isMe) return p;
+        foundMe = true;
+        return { ...p, ...meMetaRef.current };
+      });
+      if (!foundMe) next.push({ id: clientIdRef.current, ...meMetaRef.current, __isMe: true });
+      return next.sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+    });
   };
 
   const handleStart = () => {
     const qs = makeBattleQuestions(gameConfig, BATTLE_ROUNDS);
     if (qs.length < 2 || !channelRef.current) return;
+    const payload = {
+      type: "start",
+      gameId: `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+      questions: qs,
+      config: gameConfig,
+      startedAt: Date.now(),
+    };
+    if (isHost) {
+      meMetaRef.current = { ...meMetaRef.current, roomState: payload };
+      channelRef.current.track(meMetaRef.current);
+    }
+    beginBattle(payload);
     channelRef.current.send({
       type: "broadcast",
       event: "battle",
-      payload: { type: "start", questions: qs, config: gameConfig },
+      payload,
     });
   };
 
   const handleFinishRace = (result) => {
+    completedGameIdRef.current = activeGameIdRef.current;
     setMyResult(result);
     updateMe({ score: result.score, index: BATTLE_ROUNDS, finished: true, elapsedMs: result.elapsedMs });
     setPhase("done");
@@ -1929,6 +1975,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
       <BattleRace
         questions={questions}
         players={players}
+        startedAt={battleStartedAt}
         onProgress={(idx, sc) => updateMe({ index: idx, score: sc })}
         onFinish={handleFinishRace}
         onQuit={handleLeave}
