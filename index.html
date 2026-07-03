@@ -1884,11 +1884,11 @@ const styles = {
   letterTxt: { fontFamily: T.fontMono, fontSize: 14, fontWeight: 700, color: T.onNavy },
   letterTxtCompact: { fontSize: 12.8 },
 
-  tile: { width: "min(44vw, 184px)", height: 138, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 5, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
-  tileCompact: { width: "min(42vw, 158px)", height: 124, padding: 5, borderRadius: 6 },
+  tile: { width: "calc((100% - 12px) / 2)", maxWidth: 198, height: 152, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 6, padding: 5, position: "relative", alignItems: "center", justifyContent: "center", boxShadow: SH_SM },
+  tileCompact: { width: "calc((100% - 10px) / 2)", maxWidth: 176, height: 138, padding: 5, borderRadius: 6 },
   tileCorrect: { borderColor: T.teal, boxShadow: `3px 3px 0 ${T.teal}` },
   tileWrong: { borderColor: T.red, boxShadow: `3px 3px 0 ${T.red}` },
-  tileImg: { maxWidth: "100%", maxHeight: "100%", width: "auto", height: "auto", display: "block", objectFit: "contain", border: FLAG_EDGE },
+  tileImg: { width: "100%", height: "100%", display: "block", objectFit: "contain", border: FLAG_EDGE, boxSizing: "border-box" },
   tileBadge: { position: "absolute", top: 9, right: 9, width: 26, height: 26, borderRadius: 13, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
   tileBadgeCompact: { top: 7, right: 7, width: 23, height: 23, borderRadius: 12 },
 
