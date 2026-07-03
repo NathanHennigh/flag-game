@@ -23,10 +23,12 @@
   @keyframes softFade { from { opacity: 0.35; } to { opacity: 1; } }
   @keyframes popIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
   @keyframes bobIn { 0% { opacity: 0; transform: scale(.8) translateY(8px); } 60% { transform: scale(1.04); } 100% { opacity: 1; transform: none; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .fadeIn { animation: fadeIn .3s cubic-bezier(.2,.7,.3,1) both; }
   .softFade { animation: softFade .08s ease both; }
   .popIn { animation: popIn .26s cubic-bezier(.2,.7,.3,1) both; }
   .bobIn { animation: bobIn .5s cubic-bezier(.34,1.56,.5,1) both; }
+  .spin { animation: spin .72s linear infinite; }
   .press { transition: transform .08s ease, box-shadow .08s ease; }
   .press:active { transform: translate(3px,3px) !important; box-shadow: 1px 1px 0 #003650 !important; }
 </style>
@@ -111,8 +113,25 @@ const Touchable = ({ style, children, onPress, disabled, ...p }) => (
     {...p}
   >{children}</button>
 );
-const Img = ({ uri, style, ...p }) => (
-  <img src={uri} alt="" draggable={false} style={{ display: "block", ...flat(style) }} {...p} />
+const fallbackFromUri = (uri) => typeof uri === "string" && uri.endsWith(".svg") ? uri.replace(/\.svg$/, ".png") : null;
+const Img = ({ uri, fallbackUri, style, onError, ...p }) => (
+  <img
+    key={uri}
+    src={uri}
+    alt=""
+    draggable={false}
+    onError={(event) => {
+      const fallback = fallbackUri || fallbackFromUri(uri);
+      if (fallback && event.currentTarget.dataset.fallback !== "1") {
+        event.currentTarget.dataset.fallback = "1";
+        event.currentTarget.src = fallback;
+        return;
+      }
+      if (onError) onError(event);
+    }}
+    style={{ display: "block", ...flat(style) }}
+    {...p}
+  />
 );
 const Scroll = ({ style, contentStyle, children }) => (
   <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", ...flat(style) }}>
@@ -232,7 +251,10 @@ function Icon({ name, size = 24, color = "currentColor", stroke = 2, style }) {
 }
 
 /* ---------- data ----------------------------------------------------------- */
-const flagUrl = (code, w = 320) => `./flags/${code}.svg`;
+const flagFallbackUrl = (code) => `./flags/${code}.png`;
+const flagSvgUrl = (code) => `./flags/${code}.svg`;
+const flagFallbackCodes = new Set();
+const flagUrl = (code, w = 320) => flagFallbackCodes.has(code) ? flagFallbackUrl(code) : flagSvgUrl(code);
 
 const RAW = {
   Africa: [["Algeria","dz",2],["Angola","ao",3],["Benin","bj",3],["Botswana","bw",3],["Burkina Faso","bf",3],["Burundi","bi",3],["Cameroon","cm",2],["Cape Verde","cv",3],["Central African Republic","cf",3],["Chad","td",2],["Comoros","km",3],["Congo","cg",3],["DR Congo","cd",3],["Djibouti","dj",3],["Egypt","eg",1],["Equatorial Guinea","gq",3],["Eritrea","er",3],["Eswatini","sz",3],["Ethiopia","et",2],["Gabon","ga",3],["Gambia","gm",3],["Ghana","gh",2],["Guinea","gn",3],["Guinea-Bissau","gw",3],["Ivory Coast","ci",2],["Kenya","ke",1],["Lesotho","ls",3],["Liberia","lr",3],["Libya","ly",2],["Madagascar","mg",2],["Malawi","mw",3],["Mali","ml",3],["Mauritania","mr",3],["Mauritius","mu",3],["Morocco","ma",1],["Mozambique","mz",3],["Namibia","na",2],["Niger","ne",3],["Nigeria","ng",1],["Rwanda","rw",2],["São Tomé & Príncipe","st",3],["Senegal","sn",2],["Seychelles","sc",3],["Sierra Leone","sl",3],["Somalia","so",2],["Somaliland","xsom",3],["South Africa","za",1],["South Sudan","ss",3],["Sudan","sd",2],["Tanzania","tz",2],["Togo","tg",3],["Tunisia","tn",2],["Uganda","ug",2],["Zambia","zm",3],["Zimbabwe","zw",2]],
@@ -485,9 +507,18 @@ const avg = (nums) => nums.length ? nums.reduce((sum, n) => sum + n, 0) / nums.l
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const preloadFlag = (country, w = 640) => new Promise((resolve) => {
   const img = new Image();
+  let triedFallback = false;
   img.onload = resolve;
-  img.onerror = resolve;
-  img.src = flagUrl(country.code, w);
+  img.onerror = () => {
+    if (!triedFallback) {
+      triedFallback = true;
+      flagFallbackCodes.add(country.code);
+      img.src = flagFallbackUrl(country.code);
+      return;
+    }
+    resolve();
+  };
+  img.src = flagFallbackCodes.has(country.code) ? flagFallbackUrl(country.code) : flagSvgUrl(country.code);
 });
 const preloadQuestionAssets = (question) => {
   if (!question) return Promise.resolve();
@@ -1159,12 +1190,21 @@ function Quiz({ config, onFinish, onQuit }) {
   const [answers, setAnswers] = useState([]);
   const [selected, setSelected] = useState(null);
   const [pendingAdvance, setPendingAdvance] = useState(null);
+  const [questionReady, setQuestionReady] = useState(false);
   const [timeLeft, setTimeLeft] = useState(60);
   const [tick, setTick] = useState(0);
 
   const answersRef = useRef([]); const scoreRef = useRef(0); const done = useRef(false);
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { scoreRef.current = score; }, [score]);
+  useEffect(() => {
+    let cancelled = false;
+    setQuestionReady(false);
+    preloadQuestionAssets(question).then(() => {
+      if (!cancelled && !done.current) setQuestionReady(true);
+    });
+    return () => { cancelled = true; };
+  }, [question]);
 
   const finish = () => {
     if (done.current) return;
@@ -1175,9 +1215,10 @@ function Quiz({ config, onFinish, onQuit }) {
   useEffect(() => {
     if (config.mode !== "timeAttack" || done.current) return;
     if (timeLeft <= 0) { finish(); return; }
+    if (!questionReady) return;
     const t = setTimeout(() => setTimeLeft((s) => s - 1), 1000);
     return () => clearTimeout(t);
-  }, [timeLeft, config.mode]);
+  }, [timeLeft, config.mode, questionReady]);
 
   const advanceAfterAnswer = (advance) => {
     if (!advance || done.current) return;
@@ -1193,6 +1234,7 @@ function Quiz({ config, onFinish, onQuit }) {
     Promise.race([nextReady, wait(maxPreloadWait)]).then(() => {
       if (done.current) return;
       usedCodes.current = [nextQuestion.target.code, ...usedCodes.current];
+      setQuestionReady(false);
       setQuestion(nextQuestion);
       setSelected(null);
       setTick((t) => t + 1);
@@ -1200,7 +1242,7 @@ function Quiz({ config, onFinish, onQuit }) {
   };
 
   const answer = (country) => {
-    if (selected || done.current) return;
+    if (!questionReady || selected || done.current || !question) return;
     const correct = country.code === question.target.code;
     setSelected(country);
     const newAnswers = [...answers, { target: question.target, picked: country, correct }];
@@ -1236,6 +1278,7 @@ function Quiz({ config, onFinish, onQuit }) {
   };
   const hardMode = config.difficulty === "hard";
   const classicQuestionNumber = Math.min(CLASSIC_TOTAL, Math.max(1, usedCodes.current.length));
+  const isQuestionLoading = !question || !questionReady;
 
   return (
     <View style={{ flex: 1, minHeight: 0 }}>
@@ -1272,6 +1315,12 @@ function Quiz({ config, onFinish, onQuit }) {
       )}
 
       <Scroll contentStyle={{ padding: hardMode ? 16 : 20, paddingTop: hardMode ? 12 : 22, gap: hardMode ? 14 : 20, alignItems: "center" }}>
+        {isQuestionLoading ? (
+          <View style={[styles.quizLoading, hardMode && styles.quizLoadingCompact]}>
+            <View className="spin" style={styles.loadingSpinner} />
+            <Text style={styles.loadingTxt}>LOADING FLAG</Text>
+          </View>
+        ) : (
         <div key={tick} className="softFade" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: hardMode ? 14 : 20 }}>
           {question.type === "flagToName" ? (
             <React.Fragment>
@@ -1330,6 +1379,7 @@ function Quiz({ config, onFinish, onQuit }) {
             </View>
           )}
         </div>
+        )}
         <View style={{ height: hardMode ? 8 : 24 }} />
       </Scroll>
 
@@ -1763,6 +1813,11 @@ const styles = {
   barTrack: { height: 11, background: T.white, marginLeft: 14, marginRight: 14, borderRadius: 3, border: `2px solid ${T.navy}`, overflow: "hidden" },
   barTrackCompact: { height: 9, marginLeft: 12, marginRight: 12 },
   barFill: { height: "100%", transition: "width 1s linear" },
+
+  quizLoading: { width: "100%", minHeight: 462, alignItems: "center", justifyContent: "center", gap: 12 },
+  quizLoadingCompact: { minHeight: 386 },
+  loadingSpinner: { width: 38, height: 38, borderRadius: 19, border: `4px solid ${T.panelLow}`, borderTopColor: T.red, boxShadow: `0 0 0 2px ${T.navy}` },
+  loadingTxt: { fontFamily: T.fontMono, fontSize: 12, fontWeight: 700, color: T.navy, textTransform: "uppercase", letterSpacing: 1.4 },
 
   prompt: { fontFamily: T.fontDisplay, fontSize: 17, fontWeight: 800, color: T.navy, letterSpacing: 0.5, textAlign: "center", textTransform: "uppercase" },
   promptCompact: { fontSize: 15.8 },
