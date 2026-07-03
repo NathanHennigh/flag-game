@@ -133,8 +133,8 @@ const Img = ({ uri, fallbackUri, style, onError, ...p }) => (
     {...p}
   />
 );
-const Scroll = ({ style, contentStyle, children }) => (
-  <div style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", ...flat(style) }}>
+const Scroll = ({ style, contentStyle, children, innerRef }) => (
+  <div ref={innerRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", ...flat(style) }}>
     <div style={{ display: "flex", flexDirection: "column", ...flat(contentStyle) }}>{children}</div>
   </div>
 );
@@ -1194,9 +1194,15 @@ function Quiz({ config, onFinish, onQuit }) {
   const [timeLeft, setTimeLeft] = useState(60);
   const [tick, setTick] = useState(0);
 
-  const answersRef = useRef([]); const scoreRef = useRef(0); const done = useRef(false);
+  const answersRef = useRef([]); const scoreRef = useRef(0); const done = useRef(false); const quizScrollRef = useRef(null);
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { scoreRef.current = score; }, [score]);
+  useEffect(() => {
+    if (!pendingAdvance || !quizScrollRef.current) return;
+    requestAnimationFrame(() => {
+      quizScrollRef.current?.scrollTo({ top: quizScrollRef.current.scrollHeight, behavior: "smooth" });
+    });
+  }, [pendingAdvance]);
   useEffect(() => {
     let cancelled = false;
     setQuestionReady(false);
@@ -1314,7 +1320,7 @@ function Quiz({ config, onFinish, onQuit }) {
         <View style={[styles.barTrack, hardMode && styles.barTrackCompact]}><View style={[styles.barFill, { width: `${(timeLeft / 60) * 100}%`, background: timeLeft <= 10 ? T.red : T.navy }]} /></View>
       )}
 
-      <Scroll contentStyle={{ padding: hardMode ? 16 : 20, paddingTop: hardMode ? 12 : 22, gap: hardMode ? 14 : 20, alignItems: "center" }}>
+      <Scroll innerRef={quizScrollRef} contentStyle={{ padding: hardMode ? 16 : 20, paddingTop: hardMode ? 12 : 22, gap: hardMode ? 14 : 20, alignItems: "center" }}>
         {isQuestionLoading ? (
           <View style={[styles.quizLoading, hardMode && styles.quizLoadingCompact]}>
             <View className="spin" style={styles.loadingSpinner} />
@@ -1380,16 +1386,15 @@ function Quiz({ config, onFinish, onQuit }) {
           )}
         </div>
         )}
+        {pendingAdvance && (
+          <View style={[styles.quizContinueInline, hardMode && styles.quizContinueInlineCompact]}>
+            <Touchable className="press" onPress={() => advanceAfterAnswer(pendingAdvance)} style={styles.continueBtn}>
+              <Text style={styles.continueTxt}>Continue</Text>
+            </Touchable>
+          </View>
+        )}
         <View style={{ height: hardMode ? 8 : 24 }} />
       </Scroll>
-
-      {pendingAdvance && (
-        <View style={styles.quizContinueDock}>
-          <Touchable className="press" onPress={() => advanceAfterAnswer(pendingAdvance)} style={styles.continueBtn}>
-            <Text style={styles.continueTxt}>Continue</Text>
-          </Touchable>
-        </View>
-      )}
     </View>
   );
 }
@@ -1856,8 +1861,9 @@ const styles = {
   feedbackBoxCompact: { paddingTop: 6, paddingBottom: 6, paddingLeft: 12, paddingRight: 12 },
   feedbackTxt: { fontFamily: T.fontMono, fontSize: 13.5, fontWeight: 700, color: "#fff", letterSpacing: 1, textTransform: "uppercase" },
   feedbackTxtCompact: { fontSize: 11.5 },
-  quizContinueDock: { position: "absolute", left: 0, right: 0, bottom: 96, zIndex: 12, alignItems: "center", pointerEvents: "none" },
-  continueBtn: { background: T.white, border: `2px solid ${T.navy}`, borderRadius: 7, paddingTop: 9, paddingBottom: 9, paddingLeft: 20, paddingRight: 20, boxShadow: SH_SM, alignItems: "center", pointerEvents: "auto" },
+  quizContinueInline: { width: "100%", alignItems: "center", paddingTop: 6, paddingBottom: 28 },
+  quizContinueInlineCompact: { paddingTop: 2, paddingBottom: 28 },
+  continueBtn: { background: T.white, border: `2px solid ${T.navy}`, borderRadius: 7, paddingTop: 10, paddingBottom: 10, paddingLeft: 24, paddingRight: 24, boxShadow: SH_SM, alignItems: "center", pointerEvents: "auto" },
   continueTxt: { fontFamily: T.fontMono, fontSize: 12.5, fontWeight: 700, color: T.navy, textTransform: "uppercase", letterSpacing: 1.1 },
 
   flashStageTap: { width: "100%", background: "transparent", border: "none", boxShadow: "none", cursor: "pointer" },
