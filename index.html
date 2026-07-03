@@ -19,6 +19,12 @@
   html, body { margin: 0; padding: 0; background: #00283b; }
   * { box-sizing: border-box; }
   *::-webkit-scrollbar { width: 0; height: 0; }
+  /* Discrete scrollbar so users know there's more to scroll (e.g. quiz setup). */
+  .scrollable { scrollbar-width: thin; scrollbar-color: rgba(0,54,80,0.32) transparent; }
+  .scrollable::-webkit-scrollbar { width: 5px; height: 5px; }
+  .scrollable::-webkit-scrollbar-track { background: transparent; }
+  .scrollable::-webkit-scrollbar-thumb { background: rgba(0,54,80,0.28); border-radius: 4px; }
+  .scrollable::-webkit-scrollbar-thumb:hover { background: rgba(0,54,80,0.45); }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
   @keyframes softFade { from { opacity: 0.35; } to { opacity: 1; } }
   @keyframes popIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
@@ -134,7 +140,7 @@ const Img = ({ uri, fallbackUri, style, onError, ...p }) => (
   />
 );
 const Scroll = ({ style, contentStyle, children, innerRef }) => (
-  <div ref={innerRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", ...flat(style) }}>
+  <div ref={innerRef} className="scrollable" style={{ flex: 1, minHeight: 0, overflowY: "auto", WebkitOverflowScrolling: "touch", ...flat(style) }}>
     <div style={{ display: "flex", flexDirection: "column", ...flat(contentStyle) }}>{children}</div>
   </div>
 );
@@ -198,6 +204,11 @@ function Icon({ name, size = 24, color = "currentColor", stroke = 2, style }) {
       <polyline points="20.5 15.5 20.5 20 16 20" /><line x1="14.5" y1="14.5" x2="20.5" y2="20" />
       <line x1="4" y1="4" x2="9" y2="9" />
     </svg>);
+    case "swords": return (<svg {...base}>
+      <path d="M5 5 L19 19" /><path d="M5 5 L5 8.6" /><path d="M5 5 L8.6 5" />
+      <path d="M19 5 L5 19" /><path d="M19 5 L19 8.6" /><path d="M19 5 L15.4 5" />
+      <circle cx="12" cy="12" r="1.3" fill={color} stroke="none" />
+    </svg>);
     case "flag": return (<svg {...base}>
       <path d="M6 21.5 V3" /><path d="M6 4 H17.5 L15 8 L17.5 12 H6 Z" />
     </svg>);
@@ -220,6 +231,9 @@ function Icon({ name, size = 24, color = "currentColor", stroke = 2, style }) {
       <path d="M12 20.3 C12 20.3 3.6 15.6 3.6 9.6 C3.6 6.6 6 4.8 8.4 5 C10.3 5.2 11.4 6.5 12 7.6 C12.6 6.5 13.7 5.2 15.6 5 C18 4.8 20.4 6.6 20.4 9.6 C20.4 15.6 12 20.3 12 20.3 Z" fill={color} />
     </svg>);
     case "check": return (<svg {...base}><path d="M4.5 12.5 l4.8 4.8 L19.5 6.5" /></svg>);
+    case "copy": return (<svg {...base}>
+      <rect x="9" y="9" width="10.5" height="10.5" rx="2.4" /><path d="M15 5.5 H6.5 A2 2 0 0 0 4.5 7.5 V16" />
+    </svg>);
     case "x": return (<svg {...base}><path d="M6.5 6.5 l11 11 M17.5 6.5 l-11 11" /></svg>);
     case "arrowRight": return (<svg {...base}><path d="M4.5 12 h14.5" /><path d="M13 6 l7 6 -7 6" /></svg>);
     case "turnArrow": return (<svg {...base}><path d="M18.5 6.5H11a5 5 0 0 0 0 10h5.5" /><path d="M14 3.5l4.5 3-4.5 3" /></svg>);
@@ -357,6 +371,12 @@ const STYLES_MODE = [
 ];
 const NUM_OPTIONS = { easy: 3, medium: 4, hard: 6 };
 const CLASSIC_TOTAL = 10;
+const BATTLE_ROUNDS = 8;
+const MAX_BATTLE_PLAYERS = 5;
+const BATTLE_ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const randomRoomCode = () => Array.from({ length: 5 }, () => BATTLE_ROOM_CODE_CHARS[Math.floor(Math.random() * BATTLE_ROOM_CODE_CHARS.length)]).join("");
+const randomClientId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+const randomGuestName = () => `Player${Math.floor(1000 + Math.random() * 9000)}`;
 
 /* ---------- helpers -------------------------------------------------------- */
 const shuffle = (a) => { const r = a.slice(); for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; } return r; };
@@ -534,6 +554,18 @@ function makeUniqueQuestion(config, usedCodes) {
   return makeQuestionForTarget(config, pick(available));
 }
 
+function makeBattleQuestions(config, count) {
+  const usedCodes = [];
+  const questions = [];
+  for (let i = 0; i < count; i++) {
+    const q = makeUniqueQuestion({ ...config, mode: "classic" }, usedCodes);
+    if (!q) break;
+    usedCodes.push(q.target.code);
+    questions.push(q);
+  }
+  return questions;
+}
+
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const accuracy = (r) => (r.total ? Math.round((r.score / r.total) * 100) : 0);
 const weekAgo = () => Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -643,6 +675,7 @@ function BottomNav({ active, onChange }) {
   const items = [
     { key: "learn", label: "Learn", icon: "layers" },
     { key: "quiz", label: "Quiz", icon: "flag" },
+    { key: "battle", label: "Battle", icon: "swords" },
     { key: "account", label: "Account", icon: "user" },
   ];
   return (
@@ -664,6 +697,9 @@ function AuthPanel({ session, authReady, onGuest, showGuest = false }) {
   const [mode, setMode] = useState("signIn");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [signupUsername, setSignupUsername] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameBusy, setUsernameBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(authCallbackError().replace(/\+/g, " "));
   const user = session && session.user;
@@ -675,6 +711,19 @@ function AuthPanel({ session, authReady, onGuest, showGuest = false }) {
       setNotice("");
     }
   }, [user && user.id]);
+
+  useEffect(() => {
+    const current = user && user.user_metadata && user.user_metadata.username;
+    if (current) { setUsername(current); return; }
+    setUsername("");
+    if (!user || !supabaseClient) return;
+    // Existing accounts (or Google sign-ins) may not have a username yet — assign one silently.
+    let cancelled = false;
+    supabaseClient.auth.updateUser({ data: { username: randomGuestName() } }).then(({ data, error }) => {
+      if (!cancelled && !error && data.user) setUsername(data.user.user_metadata.username);
+    });
+    return () => { cancelled = true; };
+  }, [user && user.id, user && user.user_metadata && user.user_metadata.username]);
 
   const handleEmailAuth = async () => {
     if (!supabaseClient || busy) return;
@@ -688,7 +737,10 @@ function AuthPanel({ session, authReady, onGuest, showGuest = false }) {
     const { data, error } = mode === "signUp"
       ? await supabaseClient.auth.signUp({
           ...credentials,
-          options: { emailRedirectTo: authRedirectTo() },
+          options: {
+            emailRedirectTo: authRedirectTo(),
+            data: { username: signupUsername.trim() || randomGuestName() },
+          },
         })
       : await supabaseClient.auth.signInWithPassword(credentials);
     setBusy(false);
@@ -699,6 +751,20 @@ function AuthPanel({ session, authReady, onGuest, showGuest = false }) {
     setNotice(mode === "signUp" && !data.session
       ? "Check your email to confirm your account."
       : "Signed in.");
+  };
+
+  const handleSaveUsername = async () => {
+    if (!supabaseClient || usernameBusy) return;
+    const trimmed = username.trim();
+    if (!trimmed) {
+      setNotice("Username can't be empty.");
+      return;
+    }
+    setUsernameBusy(true);
+    setNotice("");
+    const { error } = await supabaseClient.auth.updateUser({ data: { username: trimmed } });
+    setUsernameBusy(false);
+    setNotice(error ? error.message : "Username updated.");
   };
 
   const handleGoogleAuth = async () => {
@@ -746,16 +812,30 @@ function AuthPanel({ session, authReady, onGuest, showGuest = false }) {
   }
 
   if (user) {
-    const displayEmail = user.email || "Signed in";
+    const savedUsername = (user.user_metadata && user.user_metadata.username) || "";
+    const usernameChanged = username.trim().length > 0 && username.trim() !== savedUsername;
     return (
       <Module label="ACCOUNT" tone="teal" right={<Text style={styles.authPill}>SIGNED IN</Text>}>
         <Row style={{ alignItems: "center", gap: 12 }}>
           <View style={styles.authAvatar}><Icon name="user" size={20} color={T.onNavy} stroke={2.2} /></View>
           <View style={{ flex: 1, gap: 2, minWidth: 0 }}>
-            <Text style={styles.authEmail}>{displayEmail}</Text>
+            <Text style={styles.authEmail}>{savedUsername || "Signed in"}</Text>
             <Text style={styles.optDesc}>Scores save under this account on this device</Text>
           </View>
         </Row>
+        <input
+          aria-label="Username"
+          placeholder="Username"
+          value={username}
+          maxLength={20}
+          onChange={(e) => setUsername(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleSaveUsername(); }}
+          style={styles.authInput}
+        />
+        <Touchable type="button" className="press" onPress={handleSaveUsername} disabled={usernameBusy || !usernameChanged} style={[styles.secondaryBtn, (usernameBusy || !usernameChanged) && styles.disabledBtn]}>
+          <Icon name="check" size={17} color={T.navy} stroke={2.4} />
+          <Text style={styles.secondaryTxt}>{usernameBusy ? "Saving..." : "Save Username"}</Text>
+        </Touchable>
         <Touchable type="button" className="press" onPress={handleSignOut} disabled={busy} style={[styles.secondaryBtn, busy && styles.disabledBtn]}>
           <Icon name="logOut" size={17} color={T.navy} stroke={2.4} />
           <Text style={styles.secondaryTxt}>{busy ? "Working..." : "Sign Out"}</Text>
@@ -787,6 +867,17 @@ function AuthPanel({ session, authReady, onGuest, showGuest = false }) {
         <View style={styles.authDividerLine} />
       </View>
 
+      {mode === "signUp" && (
+        <input
+          aria-label="Username"
+          placeholder="Username (optional)"
+          value={signupUsername}
+          maxLength={20}
+          onChange={(e) => setSignupUsername(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") handleEmailAuth(); }}
+          style={styles.authInput}
+        />
+      )}
       <input
         aria-label="Email"
         autoComplete="email"
@@ -1531,6 +1622,538 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
   );
 }
 
+/* ---------- BATTLE (live multiplayer race) --------------------------------- */
+const BATTLE_NAME_KEY = "world-flags-battle-name";
+
+function BattlePlayerRow({ player, rank }) {
+  return (
+    <Row style={styles.revRow}>
+      <View style={styles.battleRank}><Text style={styles.battleRankTxt}>{rank}</Text></View>
+      <View style={{ flex: 1, gap: 1, minWidth: 0 }}>
+        <Row style={{ alignItems: "center", gap: 6 }}>
+          <Text style={styles.optTitle}>{(player.name || "Player") + (player.__isMe ? " (You)" : "")}</Text>
+          {player.host && <Text style={styles.battleHostTag}>HOST</Text>}
+        </Row>
+        <Text style={styles.optDesc}>
+          {player.finished
+            ? `Finished in ${fmtTime(Math.max(0, Math.round((player.elapsedMs || 0) / 1000)))}`
+            : `Answering ${Math.min(player.index || 0, BATTLE_ROUNDS)}/${BATTLE_ROUNDS}`}
+        </Text>
+      </View>
+      <Text style={styles.battleScoreTxt}>{player.score || 0}</Text>
+    </Row>
+  );
+}
+
+function BattleRace({ questions, players, onProgress, onFinish, onQuit }) {
+  const total = questions.length;
+  const [index, setIndex] = useState(0);
+  const [score, setScore] = useState(0);
+  const [selected, setSelected] = useState(null);
+  const [questionReady, setQuestionReady] = useState(false);
+  const [tick, setTick] = useState(0);
+  const answersRef = useRef([]);
+  const startedAtRef = useRef(Date.now());
+  const answerLocked = useRef(false);
+  const done = useRef(false);
+  const question = questions[index];
+
+  useEffect(() => {
+    let cancelled = false;
+    setQuestionReady(false);
+    preloadQuestionAssets(question).then(() => { if (!cancelled) setQuestionReady(true); });
+    if (questions[index + 1]) preloadQuestionAssets(questions[index + 1]);
+    return () => { cancelled = true; };
+  }, [index]);
+
+  const answer = (country) => {
+    if (answerLocked.current || !questionReady || selected || done.current) return;
+    answerLocked.current = true;
+    const correct = country.code === question.target.code;
+    setSelected(country);
+    const newScore = score + (correct ? 1 : 0);
+    if (correct) setScore(newScore);
+    answersRef.current = [...answersRef.current, { target: question.target, picked: country, correct }];
+    const nextIndex = index + 1;
+    onProgress(nextIndex, newScore);
+    setTimeout(() => {
+      if (done.current) return;
+      if (nextIndex >= total) {
+        done.current = true;
+        onFinish({ score: newScore, total, answers: answersRef.current, elapsedMs: Date.now() - startedAtRef.current });
+        return;
+      }
+      setIndex(nextIndex);
+      setSelected(null);
+      setTick((t) => t + 1);
+      answerLocked.current = false;
+    }, 480);
+  };
+
+  const optColor = (c) => {
+    if (!selected) return null;
+    if (c.code === question.target.code) return "correct";
+    if (c.code === selected.code) return "wrong";
+    return null;
+  };
+
+  const isSpotFlagQuestion = question?.type === "nameToFlag";
+  const opponents = (players || []).filter((p) => !p.__isMe);
+
+  return (
+    <View style={{ flex: 1, minHeight: 0 }}>
+      <Row style={styles.qTop}>
+        <Touchable className="press" onPress={onQuit} style={styles.iconBtn}><Icon name="x" size={18} color={T.navy} stroke={2.6} /></Touchable>
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <Text style={styles.statusTxt}>{Math.min(index + 1, total)} / {total}</Text>
+        </View>
+        <View style={styles.scoreChip}><Text style={styles.scoreTxt}>{score}</Text></View>
+      </Row>
+
+      <Row style={styles.progressTrack}>
+        {Array.from({ length: total }).map((_, i) => (
+          <View key={i} style={[styles.progressSeg, i < index && styles.progressSegOn]} />
+        ))}
+      </Row>
+
+      {opponents.length > 0 && (
+        <Row style={styles.battleLeaderStrip}>
+          {opponents.map((p, i) => (
+            <View key={p.id || i} style={styles.battleLeaderChip}>
+              <Text style={styles.battleLeaderName}>{(p.name || "?").slice(0, 8)}</Text>
+              <View style={styles.battleLeaderBar}>
+                <View style={[styles.battleLeaderBarFill, { width: `${Math.min(100, ((p.index || 0) / total) * 100)}%` }]} />
+              </View>
+              {p.finished && <Icon name="check" size={11} color={T.teal} stroke={3} />}
+            </View>
+          ))}
+        </Row>
+      )}
+
+      <Scroll contentStyle={{ padding: isSpotFlagQuestion ? 14 : 20, paddingTop: 18, gap: 18, alignItems: "center" }}>
+        {!questionReady ? (
+          <View style={styles.quizLoading}>
+            <View className="spin" style={styles.loadingSpinner} />
+            <Text style={styles.loadingTxt}>LOADING FLAG</Text>
+          </View>
+        ) : (
+          <div key={tick} className="softFade" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+            {question.type === "flagToName" ? (
+              <React.Fragment>
+                <Text style={styles.prompt}>IDENTIFY THE FLAG</Text>
+                <View style={styles.flagSlot}>
+                  <View style={styles.flagFrame}>
+                    <Img uri={flagUrl(question.target.code, 640)} style={[styles.quizFlagImg, flagEdgeStyle(question.target.code)]} />
+                  </View>
+                </View>
+                <View style={{ width: "100%", gap: 10, marginTop: 2 }}>
+                  {question.options.map((c, idx) => {
+                    const st = optColor(c);
+                    return (
+                      <Touchable key={c.code} className="press" disabled={!!selected} onPress={() => answer(c)}
+                        style={[styles.answer, st === "correct" && styles.answerCorrect, st === "wrong" && styles.answerWrong]}>
+                        <Row style={{ alignItems: "center", gap: 12 }}>
+                          <View style={[styles.letter, st && styles.letterOn]}>
+                            <Text style={[styles.letterTxt, st && { color: st === "correct" ? T.teal : T.red }]}>{String.fromCharCode(65 + idx)}</Text>
+                          </View>
+                          <Text style={[styles.answerTxt, st && { color: "#fff" }]}>{c.name}</Text>
+                          <View style={{ flex: 1 }} />
+                          {st === "correct" && <Icon name="check" size={20} color="#fff" stroke={3} />}
+                          {st === "wrong" && <Icon name="x" size={19} color="#fff" stroke={3} />}
+                        </Row>
+                      </Touchable>
+                    );
+                  })}
+                </View>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                <Text style={styles.prompt}>PICK THE FLAG OF</Text>
+                <Text style={styles.heroName}>{question.target.name}</Text>
+                <Row style={{ flexWrap: "wrap", gap: 12, justifyContent: "center", alignItems: "flex-start", marginTop: 2, width: "100%" }}>
+                  {question.options.map((c) => {
+                    const st = optColor(c);
+                    return (
+                      <Touchable key={c.code} className="press" disabled={!!selected} onPress={() => answer(c)}
+                        style={[styles.tile, st === "correct" && styles.tileCorrect, st === "wrong" && styles.tileWrong]}>
+                        <Img uri={flagUrl(c.code, 320)} style={[styles.tileImg, flagEdgeStyle(c.code)]} />
+                        {st && (
+                          <View style={[styles.tileBadge, { background: st === "correct" ? T.teal : T.red }]}>
+                            <Icon name={st === "correct" ? "check" : "x"} size={14} color="#fff" stroke={3} />
+                          </View>
+                        )}
+                      </Touchable>
+                    );
+                  })}
+                </Row>
+              </React.Fragment>
+            )}
+          </div>
+        )}
+        <View style={{ height: 24 }} />
+      </Scroll>
+    </View>
+  );
+}
+
+function BattleRoom({ code, isHost, name, onLeave }) {
+  const clientIdRef = useRef(randomClientId());
+  const channelRef = useRef(null);
+  const meMetaRef = useRef({ name, host: isHost, joinedAt: Date.now(), score: 0, index: 0, finished: false, elapsedMs: null });
+  const [players, setPlayers] = useState([]);
+  const [status, setStatus] = useState("connecting"); // connecting | connected | full | error
+  const [phase, setPhase] = useState("lobby"); // lobby | racing | done
+  const [gameConfig, setGameConfig] = useState({ type: "flagToName", scope: "world", difficulty: "medium" });
+  const [questions, setQuestions] = useState(null);
+  const [myResult, setMyResult] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopyCode = () => {
+    navigator.clipboard?.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  };
+
+  useEffect(() => {
+    if (!supabaseClient) { setStatus("error"); return; }
+    let cancelled = false;
+    const channel = supabaseClient.channel(`battle-room-${code}`, {
+      config: { broadcast: { self: true }, presence: { key: clientIdRef.current } },
+    });
+    channelRef.current = channel;
+
+    // My own presence update can lag behind a flaky connection; the local
+    // meMetaRef is always accurate, so it wins over whatever the server echoes back.
+    const syncPlayers = () => {
+      const state = channel.presenceState();
+      const list = Object.entries(state)
+        .map(([id, metas]) => metas.length ? { id, ...metas[metas.length - 1] } : null)
+        .filter(Boolean)
+        .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0))
+        .map((p) => p.id === clientIdRef.current
+          ? { ...p, ...meMetaRef.current, __isMe: true }
+          : { ...p, __isMe: false });
+      setPlayers(list);
+    };
+
+    channel.on("broadcast", { event: "battle" }, ({ payload }) => {
+      if (!payload || payload.type !== "start") return;
+      meMetaRef.current = { ...meMetaRef.current, score: 0, index: 0, finished: false, elapsedMs: null };
+      channel.track(meMetaRef.current);
+      setGameConfig(payload.config);
+      setQuestions(payload.questions);
+      setMyResult(null);
+      setPhase("racing");
+    });
+    channel.on("presence", { event: "sync" }, syncPlayers);
+
+    channel.subscribe(async (subStatus) => {
+      if (cancelled) return;
+      if (subStatus === "SUBSCRIBED") {
+        const existing = Object.keys(channel.presenceState()).length;
+        if (!isHost && existing >= MAX_BATTLE_PLAYERS) {
+          setStatus("full");
+          return;
+        }
+        await channel.track(meMetaRef.current);
+        setStatus("connected");
+      } else if (subStatus === "CHANNEL_ERROR" || subStatus === "TIMED_OUT") {
+        setStatus("error");
+      }
+    });
+
+    // Realtime presence can silently drop after a brief disconnect; re-asserting
+    // periodically lets a client self-heal once the underlying socket reconnects.
+    const heartbeat = setInterval(() => {
+      if (channel.state === "joined") channel.track(meMetaRef.current);
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(heartbeat);
+      supabaseClient.removeChannel(channel);
+    };
+  }, [code]);
+
+  const updateMe = (patch) => {
+    meMetaRef.current = { ...meMetaRef.current, ...patch };
+    channelRef.current?.track(meMetaRef.current);
+    // Don't wait on a network round-trip to show my own progress.
+    setPlayers((list) => list.map((p) => (p.__isMe ? { ...p, ...meMetaRef.current } : p)));
+  };
+
+  const handleStart = () => {
+    const qs = makeBattleQuestions(gameConfig, BATTLE_ROUNDS);
+    if (qs.length < 2 || !channelRef.current) return;
+    channelRef.current.send({
+      type: "broadcast",
+      event: "battle",
+      payload: { type: "start", questions: qs, config: gameConfig },
+    });
+  };
+
+  const handleFinishRace = (result) => {
+    setMyResult(result);
+    updateMe({ score: result.score, index: BATTLE_ROUNDS, finished: true, elapsedMs: result.elapsedMs });
+    setPhase("done");
+  };
+
+  const handleLeave = () => {
+    if (channelRef.current) supabaseClient.removeChannel(channelRef.current);
+    onLeave();
+  };
+
+  if (status === "full" || status === "error") {
+    return (
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <AppHeader kicker="MULTIPLAYER" title="BATTLE" />
+        <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 14 }}>
+          <Module label={status === "full" ? "ROOM FULL" : "CONNECTION ERROR"} tone="red">
+            <Text style={styles.authNotice}>
+              {status === "full"
+                ? `This room already has ${MAX_BATTLE_PLAYERS} players. Ask the host for a new room, or create your own.`
+                : "Couldn't connect to the battle room. Check your connection and try again."}
+            </Text>
+            <Touchable className="press" onPress={handleLeave} style={styles.secondaryBtn}>
+              <Icon name="x" size={17} color={T.navy} stroke={2.4} />
+              <Text style={styles.secondaryTxt}>Back</Text>
+            </Touchable>
+          </Module>
+        </Scroll>
+      </View>
+    );
+  }
+
+  if (phase === "racing" && questions) {
+    return (
+      <BattleRace
+        questions={questions}
+        players={players}
+        onProgress={(idx, sc) => updateMe({ index: idx, score: sc })}
+        onFinish={handleFinishRace}
+        onQuit={handleLeave}
+      />
+    );
+  }
+
+  if (phase === "done") {
+    const ranked = [...players].sort((a, b) => {
+      if (!!b.finished !== !!a.finished) return b.finished ? 1 : -1;
+      if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
+      if (a.finished && b.finished) return (a.elapsedMs || 0) - (b.elapsedMs || 0);
+      return (b.index || 0) - (a.index || 0);
+    });
+    return (
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <Scroll contentStyle={{ padding: 20, gap: 16 }}>
+          <View style={{ alignItems: "center", gap: 8, marginTop: 14 }}>
+            <Text style={styles.resTitle}>BATTLE RESULTS</Text>
+            <Text style={styles.resLog}>ROOM {code}</Text>
+          </View>
+          {myResult && (
+            <View style={styles.medalWrap} className="bobIn">
+              <View style={styles.medalInner}>
+                <Icon name="trophy" size={24} color={T.navy} stroke={2} />
+                <Text style={styles.medalPct}>{myResult.score}<Text style={styles.medalPctUnit}>/{BATTLE_ROUNDS}</Text></Text>
+                <Text style={styles.medalLbl}>YOUR SCORE</Text>
+              </View>
+            </View>
+          )}
+          <Module label={`STANDINGS // ${ranked.length}`} tone="teal">
+            {ranked.map((p, i) => <BattlePlayerRow key={p.id || i} player={p} rank={i + 1} />)}
+          </Module>
+          <View style={styles.resultActions}>
+            <Row style={{ gap: 12 }}>
+              <Touchable className="press" onPress={handleLeave} style={[styles.secondaryBtn, styles.resultActionBtn, { flex: 1 }]}>
+                <Icon name="x" size={17} color={T.navy} stroke={2.2} /><Text style={styles.secondaryTxt}>Leave</Text>
+              </Touchable>
+              {isHost && (
+                <Touchable className="press" onPress={handleStart} style={[styles.primaryBtn, styles.resultActionBtn, { flex: 1.45 }]}>
+                  <Icon name="refresh" size={18} color={T.onRed} stroke={2.4} /><Text style={styles.primaryTxt}>Play Again</Text>
+                </Touchable>
+              )}
+            </Row>
+            {!isHost && <Text style={[styles.authNotice, { textAlign: "center", marginTop: 8 }]}>Waiting for the host to start a rematch...</Text>}
+          </View>
+          <View style={{ height: 28 }} />
+        </Scroll>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, minHeight: 0 }}>
+      <AppHeader kicker="MULTIPLAYER" title="BATTLE" />
+      <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 16 }}>
+        <Module label="ROOM CODE" tone="teal" right={<Text style={styles.authPill}>{players.length}/{MAX_BATTLE_PLAYERS}</Text>}>
+          <View style={{ alignItems: "center", gap: 12 }}>
+            <Text style={styles.battleCode}>{code}</Text>
+            <Touchable className="press" onPress={handleCopyCode} style={styles.battleCopyBtn}>
+              <Icon name={copied ? "check" : "copy"} size={15} color={copied ? T.teal : T.navy} stroke={2.3} />
+              <Text style={[styles.battleCopyTxt, copied && { color: T.teal }]}>{copied ? "COPIED" : "COPY"}</Text>
+            </Touchable>
+          </View>
+          <Text style={[styles.optDesc, { textAlign: "center" }]}>Share this code with friends so they can join from the Battle tab.</Text>
+        </Module>
+
+        <Module label={`PLAYERS // ${players.length}`}>
+          {players.length ? players.map((p, i) => <BattlePlayerRow key={p.id || i} player={p} rank={i + 1} />) : (
+            <Text style={styles.authNotice}>Connecting...</Text>
+          )}
+        </Module>
+
+        {isHost ? (
+          <React.Fragment>
+            <Module label="QUIZ MODE">
+              {DIRECTIONS.map((d) => {
+                const on = gameConfig.type === d.key;
+                return (
+                  <Touchable key={d.key} className="press" onPress={() => setGameConfig((c) => ({ ...c, type: d.key }))} style={[styles.optCard, on && styles.optCardOn]}>
+                    <Row style={{ alignItems: "center", gap: 12 }}>
+                      <View style={styles.optIcon}><Icon name={d.icon} size={22} color={T.navy} stroke={2.1} /></View>
+                      <View style={{ flex: 1, gap: 2 }}>
+                        <Text style={styles.optTitle}>{d.label}</Text>
+                        <Text style={styles.optDesc}>{d.desc}</Text>
+                      </View>
+                      <Radio on={on} />
+                    </Row>
+                  </Touchable>
+                );
+              })}
+            </Module>
+            <Module label="REGION">
+              <RegionGrid value={gameConfig.scope} onChange={(scope) => setGameConfig((c) => ({ ...c, scope: toggleScope(c.scope, scope) }))} />
+            </Module>
+            <Module label="DIFFICULTY">
+              <DifficultyTabs value={gameConfig.difficulty} onChange={(difficulty) => setGameConfig((c) => ({ ...c, difficulty }))} />
+            </Module>
+            <Touchable className="press" onPress={handleStart} style={styles.primaryBtn}>
+              <Icon name="swords" size={17} color={T.onRed} stroke={2.2} />
+              <Text style={styles.primaryTxt}>Start Battle</Text>
+            </Touchable>
+            <Text style={styles.authNotice}>You can start solo to try it out, or wait for friends to join with the room code above.</Text>
+          </React.Fragment>
+        ) : (
+          <Module label="STATUS" tone="red">
+            <Text style={styles.authNotice}>Waiting for the host to start the battle...</Text>
+          </Module>
+        )}
+
+        <Touchable className="press" onPress={handleLeave} style={styles.secondaryBtn}>
+          <Icon name="x" size={17} color={T.navy} stroke={2.4} />
+          <Text style={styles.secondaryTxt}>Leave Room</Text>
+        </Touchable>
+        <View style={{ height: 18 }} />
+      </Scroll>
+    </View>
+  );
+}
+
+function BattleHome({ onCreate, onJoin, name, setName }) {
+  const [joinCode, setJoinCode] = useState("");
+  const [error, setError] = useState("");
+
+  const handleJoin = () => {
+    const codeInput = joinCode.trim().toUpperCase();
+    if (codeInput.length !== 5) { setError("Enter the 5-character room code your friend shared."); return; }
+    setError("");
+    onJoin(codeInput);
+  };
+
+  return (
+    <View style={{ flex: 1, minHeight: 0 }}>
+      <AppHeader kicker="MULTIPLAYER" title="BATTLE" />
+      <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 16 }}>
+        <Module label="YOUR NAME">
+          <input
+            aria-label="Display name"
+            placeholder="Enter a display name"
+            value={name}
+            maxLength={16}
+            onChange={(e) => setName(e.target.value)}
+            style={styles.authInput}
+          />
+        </Module>
+
+        <Module label="CREATE A ROOM" tone="teal">
+          <Text style={styles.optDesc}>Start a room and share the code with up to {MAX_BATTLE_PLAYERS - 1} friends. Everyone races the same flags at the same time.</Text>
+          <Touchable className="press" onPress={onCreate} style={styles.primaryBtn}>
+            <Icon name="swords" size={17} color={T.onRed} stroke={2.2} />
+            <Text style={styles.primaryTxt}>Create Battle</Text>
+          </Touchable>
+        </Module>
+
+        <Module label="JOIN A ROOM" tone="red">
+          <input
+            aria-label="Room code"
+            placeholder="ROOM CODE"
+            value={joinCode}
+            maxLength={5}
+            onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+            onKeyDown={(e) => { if (e.key === "Enter") handleJoin(); }}
+            style={flat([styles.authInput, styles.battleCodeInput])}
+          />
+          <Touchable className="press" onPress={handleJoin} style={styles.secondaryBtn}>
+            <Icon name="arrowRight" size={17} color={T.navy} stroke={2.4} />
+            <Text style={styles.secondaryTxt}>Join Battle</Text>
+          </Touchable>
+          {error && <Text style={[styles.authNotice, { color: T.red }]}>{error}</Text>}
+        </Module>
+        <View style={{ height: 18 }} />
+      </Scroll>
+    </View>
+  );
+}
+
+function Battle() {
+  const [screen, setScreen] = useState("home"); // home | room
+  const [room, setRoom] = useState(null); // { code, isHost, name }
+  const [name, setName] = useState(() => {
+    try { return window.localStorage.getItem(BATTLE_NAME_KEY) || randomGuestName(); }
+    catch (_err) { return randomGuestName(); }
+  });
+
+  useEffect(() => {
+    try { window.localStorage.setItem(BATTLE_NAME_KEY, name); } catch (_err) {}
+  }, [name]);
+
+  if (!hasSupabaseConfig || !hasSupabaseSdk) {
+    return (
+      <View style={{ flex: 1, minHeight: 0 }}>
+        <AppHeader kicker="MULTIPLAYER" title="BATTLE" />
+        <Scroll contentStyle={{ padding: 18, paddingTop: 16, gap: 14 }}>
+          <Module label="UNAVAILABLE" tone="red">
+            <Text style={styles.authNotice}>Battle mode needs Supabase configured. Set up supabase-config.js to enable live multiplayer.</Text>
+          </Module>
+        </Scroll>
+      </View>
+    );
+  }
+
+  const handleCreate = () => {
+    const trimmed = name.trim() || randomGuestName();
+    setName(trimmed);
+    setRoom({ code: randomRoomCode(), isHost: true, name: trimmed });
+    setScreen("room");
+  };
+
+  const handleJoin = (code) => {
+    const trimmed = name.trim() || randomGuestName();
+    setName(trimmed);
+    setRoom({ code, isHost: false, name: trimmed });
+    setScreen("room");
+  };
+
+  const handleLeave = () => {
+    setRoom(null);
+    setScreen("home");
+  };
+
+  return screen === "room" && room
+    ? <BattleRoom key={`${room.code}-${room.isHost}`} code={room.code} isHost={room.isHost} name={room.name} onLeave={handleLeave} />
+    : <BattleHome onCreate={handleCreate} onJoin={handleJoin} name={name} setName={setName} />;
+}
+
 /* ---------- APP ------------------------------------------------------------ */
 function App() {
   const [tab, setTab] = useState("learn");
@@ -1752,6 +2375,9 @@ function App() {
           <View style={[styles.tabPane, tab !== "quiz" && styles.tabPaneHidden]}>
             {quizContent}
           </View>
+          <View style={[styles.tabPane, tab !== "battle" && styles.tabPaneHidden]}>
+            <Battle />
+          </View>
           <View style={[styles.tabPane, tab !== "account" && styles.tabPaneHidden]}>
             <Account session={session} authReady={authReady} quizHistory={quizHistory} reviewHistory={reviewHistory} srsWeights={srsWeights} />
           </View>
@@ -1972,6 +2598,20 @@ const styles = {
   revFlagImg: { maxWidth: 42, maxHeight: 28, display: "block", filter: FLAG_EDGE },
   revName: { fontFamily: T.fontDisplay, fontSize: 14, fontWeight: 700, color: T.navy, textTransform: "uppercase" },
   revStatus: { fontFamily: T.fontMono, fontSize: 9.5, color: T.teal, letterSpacing: 0.4, textTransform: "uppercase" },
+
+  battleCode: { fontFamily: T.fontDisplay, fontSize: 32, fontWeight: 900, color: T.navy, letterSpacing: 4 },
+  battleCopyBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 7, paddingTop: 9, paddingBottom: 9, paddingLeft: 26, paddingRight: 26, boxShadow: SH_SM },
+  battleCopyTxt: { fontFamily: T.fontMono, fontSize: 12, fontWeight: 700, color: T.navy, letterSpacing: 1 },
+  battleCodeInput: { textAlign: "center", fontFamily: T.fontMono, fontSize: 20, fontWeight: 700, letterSpacing: 6, textTransform: "uppercase" },
+  battleRank: { width: 26, height: 26, borderRadius: 13, background: T.panelLow, border: `2px solid ${T.navy}`, alignItems: "center", justifyContent: "center" },
+  battleRankTxt: { fontFamily: T.fontMono, fontSize: 11.5, fontWeight: 700, color: T.navy },
+  battleScoreTxt: { fontFamily: T.fontDisplay, fontSize: 18, fontWeight: 900, color: T.navy },
+  battleHostTag: { fontFamily: T.fontMono, fontSize: 9, fontWeight: 700, color: T.onRed, background: T.red, borderRadius: 4, paddingLeft: 5, paddingRight: 5, paddingTop: 2, paddingBottom: 2, letterSpacing: 0.5 },
+  battleLeaderStrip: { gap: 8, paddingLeft: 14, paddingRight: 14, marginTop: 8, flexWrap: "wrap" },
+  battleLeaderChip: { flexDirection: "row", alignItems: "center", gap: 6, background: T.white, border: `2px solid ${T.navy}`, borderRadius: 20, paddingLeft: 9, paddingRight: 9, paddingTop: 4, paddingBottom: 4 },
+  battleLeaderName: { fontFamily: T.fontMono, fontSize: 9.5, fontWeight: 700, color: T.navy, textTransform: "uppercase" },
+  battleLeaderBar: { width: 40, height: 6, borderRadius: 3, background: T.dim, overflow: "hidden" },
+  battleLeaderBarFill: { height: "100%", background: T.teal, borderRadius: 3 },
 };
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
