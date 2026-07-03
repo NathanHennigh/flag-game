@@ -893,6 +893,9 @@ function Home({ config, setConfig, onStart, bestScores }) {
               );
             })}
           </Row>
+          {config.mode === "timeAttack" && (
+            <Text style={styles.hint}>TIME ATTACK RESULTS DON'T COUNT TOWARD YOUR ACCURACY STATS OR FLASHCARD REVIEW LIST.</Text>
+          )}
         </Module>
 
         {best != null && (
@@ -1250,7 +1253,12 @@ function Quiz({ config, onFinish, onQuit }) {
   const finish = () => {
     if (done.current) return;
     done.current = true;
-    onFinish({ score: scoreRef.current, total: answersRef.current.length, answers: answersRef.current });
+    onFinish({
+      score: scoreRef.current,
+      total: answersRef.current.length,
+      answers: answersRef.current,
+      timeLeft: config.mode === "timeAttack" ? timeLeft : undefined,
+    });
   };
 
   useEffect(() => {
@@ -1468,6 +1476,9 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
           <Text style={styles.grade}>{grade}</Text>
           {isNewBest && (
             <Row style={styles.newBest}><Icon name="starFilled" size={13} color={T.onNavy} /><Text style={styles.newBestTxt}>NEW RECORD</Text></Row>
+          )}
+          {config.mode === "timeAttack" && result.timeLeft > 0 && (
+            <Row style={styles.newBest}><Icon name="stopwatch" size={13} color={T.onNavy} /><Text style={styles.newBestTxt}>ALL FLAGS DONE — {fmtTime(result.timeLeft)} LEFT OVER</Text></Row>
           )}
         </View>
 
@@ -1700,24 +1711,26 @@ function App() {
     const prev = bestScores[key];
     const newBest = (prev == null || r.score > prev) && r.total > 0;
     if (newBest) setBestScores((b) => ({ ...b, [key]: r.score }));
-    setQuizHistory((history) => [{
-      ts: Date.now(),
-      score: r.score,
-      total: r.total,
-      type: config.type,
-      scope: scopeId(config.scope),
-      difficulty: config.difficulty,
-      mode: config.mode,
-    }, ...history].slice(0, 500));
-    setMissedCodes((codes) => {
-      const missed = r.answers.filter((a) => !a.correct).map((a) => a.target.code);
-      const corrected = new Set(r.answers.filter((a) => a.correct).map((a) => a.target.code));
-      const next = new Set(codes.filter((code) => !corrected.has(code) && BY_CODE[code]));
-      missed.forEach((code) => {
-        if (BY_CODE[code]) next.add(code);
+    if (config.mode !== "timeAttack") {
+      setQuizHistory((history) => [{
+        ts: Date.now(),
+        score: r.score,
+        total: r.total,
+        type: config.type,
+        scope: scopeId(config.scope),
+        difficulty: config.difficulty,
+        mode: config.mode,
+      }, ...history].slice(0, 500));
+      setMissedCodes((codes) => {
+        const missed = r.answers.filter((a) => !a.correct).map((a) => a.target.code);
+        const corrected = new Set(r.answers.filter((a) => a.correct).map((a) => a.target.code));
+        const next = new Set(codes.filter((code) => !corrected.has(code) && BY_CODE[code]));
+        missed.forEach((code) => {
+          if (BY_CODE[code]) next.add(code);
+        });
+        return Array.from(next).slice(-500);
       });
-      return Array.from(next).slice(-500);
-    });
+    }
     setIsNewBest(newBest);
     setResult(r);
     setQuizScreen("results");
