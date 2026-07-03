@@ -374,6 +374,10 @@ const CLASSIC_TOTAL = 10;
 const BATTLE_ROUNDS = 8;
 const MAX_BATTLE_PLAYERS = 5;
 const BATTLE_ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+const BATTLE_MODES = [
+  { key: "race", label: "Race", icon: "stopwatch", desc: "Same flags, race to finish" },
+  { key: "headToHead", label: "Head-to-Head", icon: "swords", desc: "Same question, first correct scores" },
+];
 const randomRoomCode = () => Array.from({ length: 5 }, () => BATTLE_ROOM_CODE_CHARS[Math.floor(Math.random() * BATTLE_ROOM_CODE_CHARS.length)]).join("");
 const randomClientId = () => `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 const randomGuestName = () => `Player${Math.floor(1000 + Math.random() * 9000)}`;
@@ -1637,6 +1641,8 @@ function BattlePlayerRow({ player, rank }) {
         <Text style={styles.optDesc}>
           {player.finished
             ? `Finished in ${fmtTime(Math.max(0, Math.round((player.elapsedMs || 0) / 1000)))}`
+            : player.matchScore
+              ? `Match score ${player.matchScore}`
             : `Answering ${Math.min(player.index || 0, BATTLE_ROUNDS)}/${BATTLE_ROUNDS}`}
         </Text>
       </View>
@@ -1796,20 +1802,167 @@ function BattleRace({ questions, players, startedAt, onProgress, onFinish, onQui
   );
 }
 
+function BattleHeadToHead({ roomState, players, myId, onAnswer, onQuit }) {
+  const questions = roomState?.questions || [];
+  const total = questions.length;
+  const index = Math.min(roomState?.questionIndex || 0, Math.max(0, total - 1));
+  const question = questions[index];
+  const answers = roomState?.answers || {};
+  const myAnswer = answers[myId];
+  const roomScores = roomState?.matchScores || {};
+  const displayPlayers = (() => {
+    const byId = new Map();
+    (roomState?.participants || []).forEach((p) => byId.set(p.id, { ...p, __isMe: p.id === myId }));
+    (players || []).forEach((p) => byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === myId || p.__isMe }));
+    return Array.from(byId.values())
+      .map((p) => ({ ...p, matchScore: roomScores[p.id] || 0 }))
+      .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+  })();
+  const winner = roomState?.winnerId ? displayPlayers.find((p) => p.id === roomState.winnerId) : null;
+  const [localSelected, setLocalSelected] = useState(null);
+  const [questionReady, setQuestionReady] = useState(false);
+
+  useEffect(() => {
+    setLocalSelected(null);
+    setQuestionReady(false);
+    let cancelled = false;
+    preloadQuestionAssets(question).then(() => { if (!cancelled) setQuestionReady(true); });
+    if (questions[index + 1]) preloadQuestionAssets(questions[index + 1]);
+    return () => { cancelled = true; };
+  }, [roomState?.gameId, index]);
+
+  const answer = (country) => {
+    if (!questionReady || myAnswer || localSelected || !question) return;
+    setLocalSelected(country.code);
+    onAnswer(country, Date.now());
+  };
+
+  const selectedCode = myAnswer?.pickedCode || localSelected;
+  const reveal = Boolean(myAnswer || roomState?.winnerId || roomState?.allAnswered);
+  const optColor = (c) => {
+    if (!reveal) return null;
+    if (roomState?.winnerId && c.code === question.target.code) return "correct";
+    if (selectedCode && c.code === selectedCode && c.code !== question.target.code) return "wrong";
+    return null;
+  };
+  const isSpotFlagQuestion = question?.type === "nameToFlag";
+  const answeredCount = Object.keys(answers).length;
+
+  return (
+    <View style={{ flex: 1, minHeight: 0 }}>
+      <Row style={styles.qTop}>
+        <Touchable className="press" onPress={onQuit} style={styles.iconBtn}><Icon name="x" size={18} color={T.navy} stroke={2.6} /></Touchable>
+        <View style={{ flex: 1, alignItems: "center" }}>
+          <Text style={styles.statusTxt}>{Math.min(index + 1, total)} / {total}</Text>
+        </View>
+        <View style={styles.scoreChip}><Text style={styles.scoreTxt}>{displayPlayers.find((p) => p.__isMe)?.matchScore || 0}</Text></View>
+      </Row>
+
+      <Row style={styles.progressTrack}>
+        {Array.from({ length: total }).map((_, i) => (
+          <View key={i} style={[styles.progressSeg, i <= index && styles.progressSegOn]} />
+        ))}
+      </Row>
+
+      <Row style={styles.battleLeaderStrip}>
+        {displayPlayers.map((p) => (
+          <View key={p.id} style={styles.battleLeaderChip}>
+            <Text style={styles.battleLeaderName}>{(p.name || "?").slice(0, 8)}</Text>
+            <Text style={styles.battleScoreTxt}>{p.matchScore || 0}</Text>
+            {answers[p.id] && <Icon name="check" size={11} color={T.teal} stroke={3} />}
+          </View>
+        ))}
+      </Row>
+
+      <Scroll contentStyle={{ padding: isSpotFlagQuestion ? 14 : 20, paddingTop: 18, gap: 18, alignItems: "center" }}>
+        {!questionReady || !question ? (
+          <View style={styles.quizLoading}>
+            <View className="spin" style={styles.loadingSpinner} />
+            <Text style={styles.loadingTxt}>LOADING FLAG</Text>
+          </View>
+        ) : (
+          <div key={`${roomState?.gameId}-${index}`} className="softFade" style={{ width: "100%", display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+            <Text style={styles.prompt}>{winner ? `${winner.name || "Player"} scored` : myAnswer || localSelected ? `WAITING // ${answeredCount}/${displayPlayers.length}` : "FIRST CORRECT SCORES"}</Text>
+            {question.type === "flagToName" ? (
+              <React.Fragment>
+                <View style={styles.flagSlot}>
+                  <View style={styles.flagFrame}>
+                    <Img uri={flagUrl(question.target.code, 640)} style={[styles.quizFlagImg, flagEdgeStyle(question.target.code)]} />
+                  </View>
+                </View>
+                <View style={{ width: "100%", gap: 10, marginTop: 2 }}>
+                  {question.options.map((c, idx) => {
+                    const st = optColor(c);
+                    return (
+                      <Touchable key={c.code} className="press" disabled={!!myAnswer || !!localSelected} onPress={() => answer(c)}
+                        style={[styles.answer, st === "correct" && styles.answerCorrect, st === "wrong" && styles.answerWrong]}>
+                        <Row style={{ alignItems: "center", gap: 12 }}>
+                          <View style={[styles.letter, st && styles.letterOn]}>
+                            <Text style={[styles.letterTxt, st && { color: st === "correct" ? T.teal : T.red }]}>{String.fromCharCode(65 + idx)}</Text>
+                          </View>
+                          <Text style={[styles.answerTxt, st && { color: "#fff" }]}>{c.name}</Text>
+                          <View style={{ flex: 1 }} />
+                          {st === "correct" && <Icon name="check" size={20} color="#fff" stroke={3} />}
+                          {st === "wrong" && <Icon name="x" size={19} color="#fff" stroke={3} />}
+                        </Row>
+                      </Touchable>
+                    );
+                  })}
+                </View>
+              </React.Fragment>
+            ) : (
+              <React.Fragment>
+                <Text style={styles.heroName}>{question.target.name}</Text>
+                <Row style={{ flexWrap: "wrap", gap: 12, justifyContent: "center", alignItems: "flex-start", marginTop: 2, width: "100%" }}>
+                  {question.options.map((c) => {
+                    const st = optColor(c);
+                    return (
+                      <Touchable key={c.code} className="press" disabled={!!myAnswer || !!localSelected} onPress={() => answer(c)}
+                        style={[styles.tile, st === "correct" && styles.tileCorrect, st === "wrong" && styles.tileWrong]}>
+                        <Img uri={flagUrl(c.code, 320)} style={[styles.tileImg, flagEdgeStyle(c.code)]} />
+                        {st && (
+                          <View style={[styles.tileBadge, { background: st === "correct" ? T.teal : T.red }]}>
+                            <Icon name={st === "correct" ? "check" : "x"} size={14} color="#fff" stroke={3} />
+                          </View>
+                        )}
+                      </Touchable>
+                    );
+                  })}
+                </Row>
+              </React.Fragment>
+            )}
+          </div>
+        )}
+        <View style={{ height: 24 }} />
+      </Scroll>
+    </View>
+  );
+}
+
 function BattleRoom({ code, isHost, name, onLeave }) {
   const clientIdRef = useRef(randomClientId());
   const channelRef = useRef(null);
-  const meMetaRef = useRef({ name, host: isHost, joinedAt: Date.now(), score: 0, index: 0, finished: false, elapsedMs: null });
+  const meMetaRef = useRef({ name, host: isHost, joinedAt: Date.now(), score: 0, index: 0, matchScore: 0, finished: false, elapsedMs: null });
   const activeGameIdRef = useRef(null);
   const completedGameIdRef = useRef(null);
+  const roomStateRef = useRef(null);
+  const h2hAdvanceTimerRef = useRef(null);
+  const playersRef = useRef([]);
+  const matchScoresRef = useRef({});
   const [players, setPlayers] = useState([]);
   const [status, setStatus] = useState("connecting"); // connecting | connected | full | error
   const [phase, setPhase] = useState("lobby"); // lobby | racing | done
+  const [battleMode, setBattleMode] = useState("race");
   const [gameConfig, setGameConfig] = useState({ type: "flagToName", scope: "world", difficulty: "medium" });
   const [questions, setQuestions] = useState(null);
+  const [roomState, setRoomState] = useState(null);
   const [battleStartedAt, setBattleStartedAt] = useState(null);
+  const [matchScores, setMatchScores] = useState({});
   const [myResult, setMyResult] = useState(null);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => { playersRef.current = players; }, [players]);
+  useEffect(() => { matchScoresRef.current = matchScores; }, [matchScores]);
 
   const handleCopyCode = () => {
     navigator.clipboard?.writeText(code);
@@ -1817,17 +1970,77 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     setTimeout(() => setCopied(false), 1600);
   };
 
+  const mergeRoomPlayers = (list, scores, state = roomStateRef.current) => {
+    const byId = new Map();
+    (state?.participants || []).forEach((p) => {
+      byId.set(p.id, { ...p, __isMe: p.id === clientIdRef.current });
+    });
+    list.forEach((p) => {
+      byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || p.__isMe });
+    });
+    return Array.from(byId.values())
+      .map((p) => ({ ...p, matchScore: scores?.[p.id] || 0 }))
+      .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+  };
+
+  const applyMatchScores = (scores) => {
+    const nextScores = scores || {};
+    matchScoresRef.current = nextScores;
+    setMatchScores(nextScores);
+    setPlayers((list) => {
+      const scored = mergeRoomPlayers(list, nextScores);
+      playersRef.current = scored;
+      return scored;
+    });
+  };
+
+  const publishRoomState = (nextState) => {
+    roomStateRef.current = nextState;
+    setRoomState(nextState);
+    const nextScores = nextState?.matchScores || {};
+    applyMatchScores(nextScores);
+    meMetaRef.current = {
+      ...meMetaRef.current,
+      matchScore: nextScores[clientIdRef.current] || 0,
+      roomState: nextState,
+    };
+    channelRef.current?.track(meMetaRef.current);
+    channelRef.current?.send({ type: "broadcast", event: "battle-state", payload: nextState });
+  };
+
   const beginBattle = (payload) => {
     if (!payload || payload.type !== "start" || !Array.isArray(payload.questions) || !payload.questions.length) return;
     const gameId = payload.gameId || `${payload.startedAt || Date.now()}`;
-    if (activeGameIdRef.current === gameId) return;
     if (completedGameIdRef.current === gameId) return;
+    if (activeGameIdRef.current === gameId) {
+      const nextScores = payload.matchScores || matchScoresRef.current;
+      roomStateRef.current = payload;
+      setRoomState(payload);
+      applyMatchScores(nextScores);
+      meMetaRef.current = { ...meMetaRef.current, matchScore: nextScores[clientIdRef.current] || 0 };
+      channelRef.current?.track(meMetaRef.current);
+      setBattleMode(payload.mode || battleMode);
+      setPhase(payload.phase === "done" ? "done" : "racing");
+      return;
+    }
     activeGameIdRef.current = gameId;
     completedGameIdRef.current = null;
-    meMetaRef.current = { ...meMetaRef.current, score: 0, index: 0, finished: false, elapsedMs: null };
+    const nextScores = payload.matchScores || matchScoresRef.current;
+    meMetaRef.current = {
+      ...meMetaRef.current,
+      score: 0,
+      index: 0,
+      matchScore: nextScores[clientIdRef.current] || 0,
+      finished: false,
+      elapsedMs: null,
+    };
     channelRef.current?.track(meMetaRef.current);
     setGameConfig(payload.config || gameConfig);
     setQuestions(payload.questions);
+    setRoomState(payload);
+    roomStateRef.current = payload;
+    applyMatchScores(nextScores);
+    setBattleMode(payload.mode || battleMode);
     setBattleStartedAt(payload.startedAt || Date.now());
     setMyResult(null);
     setPhase("racing");
@@ -1857,14 +2070,26 @@ function BattleRoom({ code, isHost, name, onLeave }) {
         ? list
         : [{ id: clientIdRef.current, ...meMetaRef.current, __isMe: true }, ...list]
             .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
-      setPlayers(nextList);
       const hostState = nextList.find((p) => p.host && p.roomState?.type === "start")?.roomState;
+      const scoredList = hostState?.matchScores
+        ? mergeRoomPlayers(nextList, hostState.matchScores, hostState)
+        : nextList;
+      playersRef.current = scoredList;
+      setPlayers(scoredList);
       if (hostState && hostState.gameId !== completedGameIdRef.current) beginBattle(hostState);
     };
 
     channel.on("broadcast", { event: "battle" }, ({ payload }) => {
       if (!payload || payload.type !== "start") return;
       beginBattle(payload);
+    });
+    channel.on("broadcast", { event: "battle-state" }, ({ payload }) => {
+      if (!payload || payload.type !== "start") return;
+      beginBattle(payload);
+    });
+    channel.on("broadcast", { event: "battle-answer" }, ({ payload }) => {
+      if (!payload || payload.type !== "answer") return;
+      recordHeadToHeadAnswer(payload);
     });
     channel.on("presence", { event: "sync" }, syncPlayers);
     channel.on("presence", { event: "join" }, syncPlayers);
@@ -1895,6 +2120,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     return () => {
       cancelled = true;
       clearInterval(heartbeat);
+      if (h2hAdvanceTimerRef.current) clearTimeout(h2hAdvanceTimerRef.current);
       supabaseClient.removeChannel(channel);
     };
   }, [code]);
@@ -1915,15 +2141,94 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     });
   };
 
+  const scheduleHeadToHeadAdvance = (delay = 950) => {
+    if (h2hAdvanceTimerRef.current) clearTimeout(h2hAdvanceTimerRef.current);
+    h2hAdvanceTimerRef.current = setTimeout(() => advanceHeadToHead(), delay);
+  };
+
+  const advanceHeadToHead = () => {
+    if (!isHost) return;
+    const state = roomStateRef.current;
+    if (!state || state.mode !== "headToHead" || state.phase === "done") return;
+    const nextIndex = (state.questionIndex || 0) + 1;
+    if (nextIndex >= state.questions.length) {
+      const doneState = { ...state, phase: "done", answers: {}, allAnswered: true, winnerId: null };
+      publishRoomState(doneState);
+      setPhase("done");
+      return;
+    }
+    publishRoomState({
+      ...state,
+      phase: "racing",
+      questionIndex: nextIndex,
+      questionStartedAt: Date.now(),
+      answers: {},
+      winnerId: null,
+      allAnswered: false,
+    });
+  };
+
+  const recordHeadToHeadAnswer = (payload) => {
+    if (!isHost) return;
+    const state = roomStateRef.current;
+    if (!state || state.mode !== "headToHead" || state.phase === "done") return;
+    if (payload.gameId !== state.gameId || payload.questionIndex !== state.questionIndex) return;
+    const playerId = payload.playerId;
+    if (!playerId || state.answers?.[playerId]) return;
+
+    const question = state.questions[state.questionIndex];
+    if (!question) return;
+    const correct = payload.pickedCode === question.target.code;
+    const answers = {
+      ...(state.answers || {}),
+      [playerId]: {
+        pickedCode: payload.pickedCode,
+        answeredAt: payload.answeredAt || Date.now(),
+        correct,
+      },
+    };
+    const nextScores = { ...(state.matchScores || {}) };
+    let winnerId = state.winnerId || null;
+    if (correct && !winnerId) {
+      winnerId = playerId;
+      nextScores[playerId] = (nextScores[playerId] || 0) + 1;
+    }
+    const currentPlayers = playersRef.current;
+    const activeIds = currentPlayers.length ? currentPlayers.map((p) => p.id) : Object.keys(nextScores);
+    const allAnswered = activeIds.length > 0 && activeIds.every((id) => answers[id]);
+    const nextState = { ...state, answers, winnerId, allAnswered, matchScores: nextScores };
+    publishRoomState(nextState);
+    if (winnerId) scheduleHeadToHeadAdvance(1050);
+    else if (allAnswered) scheduleHeadToHeadAdvance(1250);
+  };
+
   const handleStart = () => {
     const qs = makeBattleQuestions(gameConfig, BATTLE_ROUNDS);
     if (qs.length < 2 || !channelRef.current) return;
+    const baseScores = { ...matchScoresRef.current };
+    playersRef.current.forEach((p) => { if (baseScores[p.id] == null) baseScores[p.id] = 0; });
+    if (baseScores[clientIdRef.current] == null) baseScores[clientIdRef.current] = 0;
+    const roster = mergeRoomPlayers(playersRef.current, baseScores);
+    if (!roster.some((p) => p.id === clientIdRef.current)) {
+      roster.push({ id: clientIdRef.current, ...meMetaRef.current, __isMe: true, matchScore: baseScores[clientIdRef.current] || 0 });
+    }
+    const participants = roster
+      .map(({ id, name, host, joinedAt }) => ({ id, name, host: !!host, joinedAt }));
     const payload = {
       type: "start",
       gameId: `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+      mode: battleMode,
       questions: qs,
       config: gameConfig,
+      participants,
       startedAt: Date.now(),
+      matchScores: baseScores,
+      phase: "racing",
+      questionIndex: 0,
+      questionStartedAt: Date.now(),
+      answers: {},
+      winnerId: null,
+      allAnswered: false,
     };
     if (isHost) {
       meMetaRef.current = { ...meMetaRef.current, roomState: payload };
@@ -1942,6 +2247,21 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     setMyResult(result);
     updateMe({ score: result.score, index: BATTLE_ROUNDS, finished: true, elapsedMs: result.elapsedMs });
     setPhase("done");
+  };
+
+  const handleHeadToHeadAnswer = (country, answeredAt) => {
+    const state = roomStateRef.current;
+    if (!state || state.mode !== "headToHead") return;
+    const payload = {
+      type: "answer",
+      gameId: state.gameId,
+      questionIndex: state.questionIndex,
+      playerId: clientIdRef.current,
+      pickedCode: country.code,
+      answeredAt,
+    };
+    if (isHost) recordHeadToHeadAnswer(payload);
+    channelRef.current?.send({ type: "broadcast", event: "battle-answer", payload });
   };
 
   const handleLeave = () => {
@@ -1970,6 +2290,18 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     );
   }
 
+  if (phase === "racing" && battleMode === "headToHead" && roomState) {
+    return (
+      <BattleHeadToHead
+        roomState={roomState}
+        players={players}
+        myId={clientIdRef.current}
+        onAnswer={handleHeadToHeadAnswer}
+        onQuit={handleLeave}
+      />
+    );
+  }
+
   if (phase === "racing" && questions) {
     return (
       <BattleRace
@@ -1985,6 +2317,10 @@ function BattleRoom({ code, isHost, name, onLeave }) {
 
   if (phase === "done") {
     const ranked = [...players].sort((a, b) => {
+      if (battleMode === "headToHead") {
+        if ((b.matchScore || 0) !== (a.matchScore || 0)) return (b.matchScore || 0) - (a.matchScore || 0);
+        return (a.joinedAt || 0) - (b.joinedAt || 0);
+      }
       if (!!b.finished !== !!a.finished) return b.finished ? 1 : -1;
       if ((b.score || 0) !== (a.score || 0)) return (b.score || 0) - (a.score || 0);
       if (a.finished && b.finished) return (a.elapsedMs || 0) - (b.elapsedMs || 0);
@@ -1994,15 +2330,15 @@ function BattleRoom({ code, isHost, name, onLeave }) {
       <View style={{ flex: 1, minHeight: 0 }}>
         <Scroll contentStyle={{ padding: 20, gap: 16 }}>
           <View style={{ alignItems: "center", gap: 8, marginTop: 14 }}>
-            <Text style={styles.resTitle}>BATTLE RESULTS</Text>
-            <Text style={styles.resLog}>ROOM {code}</Text>
+            <Text style={styles.resTitle}>{battleMode === "headToHead" ? "MATCH RESULTS" : "BATTLE RESULTS"}</Text>
+            <Text style={styles.resLog}>ROOM {code} // {battleMode === "headToHead" ? "HEAD-TO-HEAD" : "RACE"}</Text>
           </View>
-          {myResult && (
+          {(myResult || battleMode === "headToHead") && (
             <View style={styles.medalWrap} className="bobIn">
               <View style={styles.medalInner}>
                 <Icon name="trophy" size={24} color={T.navy} stroke={2} />
-                <Text style={styles.medalPct}>{myResult.score}<Text style={styles.medalPctUnit}>/{BATTLE_ROUNDS}</Text></Text>
-                <Text style={styles.medalLbl}>YOUR SCORE</Text>
+                <Text style={styles.medalPct}>{battleMode === "headToHead" ? (matchScores[clientIdRef.current] || 0) : myResult.score}<Text style={styles.medalPctUnit}>/{BATTLE_ROUNDS}</Text></Text>
+                <Text style={styles.medalLbl}>{battleMode === "headToHead" ? "MATCH PTS" : "YOUR SCORE"}</Text>
               </View>
             </View>
           )}
@@ -2051,6 +2387,20 @@ function BattleRoom({ code, isHost, name, onLeave }) {
 
         {isHost ? (
           <React.Fragment>
+            <Module label="BATTLE TYPE" tone="teal">
+              <Row style={{ gap: 10 }}>
+                {BATTLE_MODES.map((mode) => {
+                  const on = battleMode === mode.key;
+                  return (
+                    <Touchable key={mode.key} className="press" onPress={() => setBattleMode(mode.key)} style={[styles.modeCard, { flex: 1 }, on && styles.modeCardOn]}>
+                      <View style={styles.modeIcon}><Icon name={mode.icon} size={20} color={T.navy} stroke={2.1} /></View>
+                      <Text style={styles.modeTitle}>{mode.label}</Text>
+                      <Text style={styles.modeDesc}>{mode.desc}</Text>
+                    </Touchable>
+                  );
+                })}
+              </Row>
+            </Module>
             <Module label="QUIZ MODE">
               {DIRECTIONS.map((d) => {
                 const on = gameConfig.type === d.key;
