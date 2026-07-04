@@ -2006,6 +2006,17 @@ function BattleRoom({ code, isHost, name, onLeave }) {
   };
 
   const selfPlayer = () => ({ id: clientIdRef.current, ...meMetaRef.current, __isMe: true });
+  const lobbyParticipant = () => ({
+    id: clientIdRef.current,
+    name: meMetaRef.current.name,
+    host: !!meMetaRef.current.host,
+    joinedAt: meMetaRef.current.joinedAt,
+    score: meMetaRef.current.score || 0,
+    index: meMetaRef.current.index || 0,
+    matchScore: meMetaRef.current.matchScore || 0,
+    finished: !!meMetaRef.current.finished,
+    elapsedMs: meMetaRef.current.elapsedMs || null,
+  });
 
   const recentPeerPlayers = () => {
     const now = Date.now();
@@ -2121,6 +2132,22 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     });
   };
 
+  const applyLobbyParticipants = (participants = []) => {
+    if (!Array.isArray(participants) || !participants.length) return;
+    const scored = mergeRoomPlayers(participants, matchScoresRef.current, roomStateRef.current);
+    playersRef.current = scored;
+    setPlayers(scored);
+  };
+
+  const applyBattleRoomSnapshot = (room) => {
+    if (!room || typeof room !== "object") return;
+    if (room.type === "start") {
+      beginBattle(room);
+      return;
+    }
+    if (room.type === "lobby") applyLobbyParticipants(room.participants);
+  };
+
   const persistBattleRoomState = async (state = roomStateRef.current) => {
     if (!supabaseClient || !state || !battleRoomTableReadyRef.current) return;
     const payload = packBattleState(state);
@@ -2147,9 +2174,75 @@ function BattleRoom({ code, isHost, name, onLeave }) {
         console.warn("Battle room table unavailable; falling back to realtime only.", error.message || error);
         return;
       }
-      if (data?.room) beginBattle(data.room);
+      if (data?.room) applyBattleRoomSnapshot(data.room);
     } finally {
       roomPollBusyRef.current = false;
+    }
+  };
+
+  const persistLobbyParticipant = async () => {
+    if (!supabaseClient || !battleRoomTableReadyRef.current) return;
+    try {
+      const { data, error } = await supabaseClient
+        .from(BATTLE_ROOMS_TABLE)
+        .select("room")
+        .eq("room_code", code)
+        .maybeSingle();
+      if (error) {
+        battleRoomTableReadyRef.current = false;
+        console.warn("Battle room table unavailable; falling back to realtime only.", error.message || error);
+        return;
+      }
+      const existing = data?.room && typeof data.room === "object" ? data.room : null;
+      if (existing?.type === "start") {
+        applyBattleRoomSnapshot(existing);
+        return;
+      }
+      const mine = lobbyParticipant();
+      const byId = new Map((existing?.participants || []).map((p) => [p.id, p]));
+      byId.set(mine.id, { ...byId.get(mine.id), ...mine });
+      const participants = Array.from(byId.values()).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+      const lobbyRoom = {
+        type: "lobby",
+        roomCode: code,
+        participants,
+        updatedAt: Date.now(),
+      };
+      const { error: upsertError } = await supabaseClient
+        .from(BATTLE_ROOMS_TABLE)
+        .upsert({ room_code: code, room: lobbyRoom }, { onConflict: "room_code" });
+      if (upsertError) {
+        battleRoomTableReadyRef.current = false;
+        console.warn("Battle room table unavailable; falling back to realtime only.", upsertError.message || upsertError);
+        return;
+      }
+      applyLobbyParticipants(participants);
+    } catch (err) {
+      console.warn("Battle room table unavailable; falling back to realtime only.", err?.message || err);
+      battleRoomTableReadyRef.current = false;
+    }
+  };
+
+  const loadDurableLobbyParticipants = async () => {
+    if (!supabaseClient || !battleRoomTableReadyRef.current) return [];
+    try {
+      const { data, error } = await supabaseClient
+        .from(BATTLE_ROOMS_TABLE)
+        .select("room")
+        .eq("room_code", code)
+        .maybeSingle();
+      if (error) {
+        battleRoomTableReadyRef.current = false;
+        return [];
+      }
+      const participants = data?.room?.type === "lobby" && Array.isArray(data.room.participants)
+        ? data.room.participants
+        : [];
+      if (participants.length) applyLobbyParticipants(participants);
+      return participants;
+    } catch (_err) {
+      battleRoomTableReadyRef.current = false;
+      return [];
     }
   };
 
@@ -2317,6 +2410,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
         await trackMe(channel);
         setStatus("connected");
         syncPlayers();
+        persistLobbyParticipant();
         publishPeer();
         channel.send({ type: "broadcast", event: "battle-request-state", payload: { type: "request-state", from: clientIdRef.current } });
         if (!isHost) fetchBattleRoomState();
@@ -2330,6 +2424,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     const heartbeat = setInterval(() => {
       if (channel.state === "joined") {
         trackMe(channel);
+        persistLobbyParticipant();
         publishPeer();
         if (isHost && roomStateRef.current) {
           channel.send({ type: "broadcast", event: "battle-state", payload: packBattleState(roomStateRef.current) });
@@ -2542,13 +2637,17 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     });
   };
 
-  const handleStart = () => {
+  const handleStart = async () => {
+    const durableParticipants = await loadDurableLobbyParticipants();
     const qs = makeBattleQuestions(gameConfig, BATTLE_ROUNDS);
     if (qs.length < 2 || !channelRef.current) return;
     const baseScores = { ...matchScoresRef.current };
-    playersRef.current.forEach((p) => { if (baseScores[p.id] == null) baseScores[p.id] = 0; });
+    const startPlayers = durableParticipants.length
+      ? mergeRoomPlayers(durableParticipants, baseScores)
+      : playersRef.current;
+    startPlayers.forEach((p) => { if (baseScores[p.id] == null) baseScores[p.id] = 0; });
     if (baseScores[clientIdRef.current] == null) baseScores[clientIdRef.current] = 0;
-    const roster = mergeRoomPlayers(playersRef.current, baseScores);
+    const roster = mergeRoomPlayers(startPlayers, baseScores);
     if (!roster.some((p) => p.id === clientIdRef.current)) {
       roster.push({ id: clientIdRef.current, ...meMetaRef.current, __isMe: true, matchScore: baseScores[clientIdRef.current] || 0 });
     }
