@@ -2033,14 +2033,14 @@ function BattleRoom({ code, isHost, name, onLeave }) {
 
   const mergeRoomPlayers = (list, scores, state = roomStateRef.current) => {
     const byId = new Map();
-    (state?.participants || []).forEach((p) => {
-      byId.set(p.id, { ...p, __isMe: p.id === clientIdRef.current });
+    list.forEach((p) => {
+      byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || p.__isMe });
     });
     recentPeerPlayers().forEach((p) => {
       byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || p.__isMe });
     });
-    list.forEach((p) => {
-      byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || p.__isMe });
+    (state?.participants || []).forEach((p) => {
+      byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || byId.get(p.id)?.__isMe });
     });
     byId.set(clientIdRef.current, { ...byId.get(clientIdRef.current), ...selfPlayer() });
     return Array.from(byId.values())
@@ -2246,6 +2246,44 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     }
   };
 
+  const persistActivePlayerProgress = async () => {
+    const state = roomStateRef.current;
+    if (!supabaseClient || !state || state.type !== "start" || !battleRoomTableReadyRef.current) return;
+    try {
+      const { data, error } = await supabaseClient
+        .from(BATTLE_ROOMS_TABLE)
+        .select("room")
+        .eq("room_code", code)
+        .maybeSingle();
+      if (error) {
+        battleRoomTableReadyRef.current = false;
+        return;
+      }
+      const latest = data?.room?.type === "start" ? unpackBattleState(data.room) : state;
+      const mine = lobbyParticipant();
+      const byId = new Map((latest.participants || state.participants || []).map((p) => [p.id, p]));
+      byId.set(mine.id, { ...byId.get(mine.id), ...mine });
+      const participants = Array.from(byId.values()).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+      const nextState = {
+        ...latest,
+        participants,
+        matchScores: state.matchScores || latest.matchScores || {},
+        stateVersion: Math.max(latest.stateVersion || 0, state.stateVersion || 0),
+      };
+      const { error: upsertError } = await supabaseClient
+        .from(BATTLE_ROOMS_TABLE)
+        .upsert({ room_code: code, room: packBattleState(nextState) }, { onConflict: "room_code" });
+      if (upsertError) {
+        battleRoomTableReadyRef.current = false;
+        return;
+      }
+      roomStateRef.current = { ...roomStateRef.current, participants };
+      applyLobbyParticipants(participants);
+    } catch (_err) {
+      battleRoomTableReadyRef.current = false;
+    }
+  };
+
   const publishRoomState = (nextState) => {
     const versionedState = {
       ...nextState,
@@ -2298,7 +2336,15 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     if (!state || state.type !== "start" || !Array.isArray(state.questions) || !state.questions.length) return;
     const gameId = state.gameId || `${state.startedAt || Date.now()}`;
     if (state.mode === "headToHead") setupLiveChannel(gameId);
-    if (completedGameIdRef.current === gameId) return;
+    if (completedGameIdRef.current === gameId) {
+      const nextScores = state.matchScores || matchScoresRef.current;
+      roomStateRef.current = { ...roomStateRef.current, ...state };
+      setRoomState(roomStateRef.current);
+      applyMatchScores(nextScores);
+      refreshPlayers(state.participants || playersRef.current, roomStateRef.current);
+      setBattleMode(state.mode || battleMode);
+      return;
+    }
     if (activeGameIdRef.current === gameId) {
       const incomingVersion = state.stateVersion || 0;
       const currentVersion = roomStateRef.current?.stateVersion || 0;
@@ -2433,12 +2479,14 @@ function BattleRoom({ code, isHost, name, onLeave }) {
           applyHostPresenceRoom();
           fetchBattleRoomState();
           channel.send({ type: "broadcast", event: "battle-request-state", payload: { type: "request-state", from: clientIdRef.current } });
+        } else if (activeGameIdRef.current) {
+          fetchBattleRoomState();
         }
       }
     }, BATTLE_HEARTBEAT_MS);
 
     const roomPoll = setInterval(() => {
-      if (!isHost) fetchBattleRoomState();
+      if (!isHost || activeGameIdRef.current) fetchBattleRoomState();
     }, BATTLE_ROOM_POLL_MS);
 
     return () => {
@@ -2460,6 +2508,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     meMetaRef.current = { ...meMetaRef.current, ...patch };
     trackMe();
     publishPeer();
+    persistActivePlayerProgress();
     // Don't wait on a network round-trip to show my own progress.
     setPlayers((list) => {
       let foundMe = false;
