@@ -1657,7 +1657,8 @@ function Results({ result, isNewBest, config, onAgain, onHome }) {
 /* ---------- BATTLE (live multiplayer race) --------------------------------- */
 const BATTLE_NAME_KEY = "world-flags-battle-name";
 
-function BattlePlayerRow({ player, rank }) {
+function BattlePlayerRow({ player, rank, scoreMode = "round" }) {
+  const displayScore = scoreMode === "match" ? (player.matchScore || 0) : (player.score || 0);
   return (
     <Row style={styles.revRow}>
       <View style={styles.battleRank}><Text style={styles.battleRankTxt}>{rank}</Text></View>
@@ -1667,14 +1668,16 @@ function BattlePlayerRow({ player, rank }) {
           {player.host && <Text style={styles.battleHostTag}>HOST</Text>}
         </Row>
         <Text style={styles.optDesc}>
-          {player.finished
+          {scoreMode === "match"
+            ? `Match score ${displayScore}`
+            : player.finished
             ? `Finished in ${fmtTime(Math.max(0, Math.round((player.elapsedMs || 0) / 1000)))}`
             : player.matchScore
               ? `Match score ${player.matchScore}`
-            : `Answering ${Math.min(player.index || 0, BATTLE_ROUNDS)}/${BATTLE_ROUNDS}`}
+              : `Answering ${Math.min(player.index || 0, BATTLE_ROUNDS)}/${BATTLE_ROUNDS}`}
         </Text>
       </View>
-      <Text style={styles.battleScoreTxt}>{player.score || 0}</Text>
+      <Text style={styles.battleScoreTxt}>{displayScore}</Text>
     </Row>
   );
 }
@@ -2676,14 +2679,16 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     if (!state || state.mode !== "headToHead" || state.phase === "done") return;
     const nextIndex = (state.questionIndex || 0) + 1;
     if (nextIndex >= state.questions.length) {
-      beginBattle({
+      const doneState = {
         ...state,
         phase: "done",
         answers: {},
         winnerId: null,
         allAnswered: true,
         stateVersion: (state.stateVersion || 0) + 1,
-      });
+      };
+      beginBattle(doneState);
+      applyMatchScores(doneState.matchScores || {});
       setPhase("done");
       return;
     }
@@ -2715,6 +2720,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     if (nextIndex >= state.questions.length) {
       const doneState = publishRoomState({ ...state, phase: "done", answers: {}, allAnswered: true, winnerId: null });
       publishHeadToHeadAdvance(doneState);
+      applyMatchScores(doneState.matchScores || {});
       setPhase("done");
       return;
     }
@@ -2957,7 +2963,14 @@ function BattleRoom({ code, isHost, name, onLeave }) {
             </View>
           )}
           <Module label={`STANDINGS // ${ranked.length}`} tone="teal">
-            {ranked.map((p, i) => <BattlePlayerRow key={p.id || i} player={p} rank={i + 1} />)}
+            {ranked.map((p, i) => (
+              <BattlePlayerRow
+                key={p.id || i}
+                player={p}
+                rank={i + 1}
+                scoreMode={battleMode === "headToHead" ? "match" : "round"}
+              />
+            ))}
           </Module>
           <View style={styles.resultActions}>
             <Row style={{ gap: 12 }}>
