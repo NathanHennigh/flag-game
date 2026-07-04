@@ -134,9 +134,9 @@ https://flags.thehennighs.com/privacy
 https://flags.thehennighs.com/terms
 ```
 
-## 7. Progress database table
+## 7. Database tables
 
-Signed-in users sync quiz stats, flashcard reviews, SRS weights, and best scores to Supabase. Guests can still play, but guest progress stays in that browser.
+Signed-in users sync quiz stats, flashcard reviews, SRS weights, and best scores to Supabase. Multiplayer battle rooms also store the current room state in Supabase so players can recover a start or question update if a Realtime broadcast is missed.
 
 In Supabase Dashboard:
 
@@ -146,10 +146,11 @@ In Supabase Dashboard:
 4. Paste the contents of `supabase-progress-schema.sql`.
 5. Click Run.
 
-The table name is:
+The table names are:
 
 ```text
 public.world_flags_progress
+public.world_flags_battle_rooms
 ```
 
-The policies allow each authenticated user to read, insert, and update only their own progress row.
+The progress policies allow each authenticated user to read, insert, and update only their own progress row. The battle-room policies allow anonymous and signed-in players to read/create/update recent room rows by room code for casual multiplayer.
