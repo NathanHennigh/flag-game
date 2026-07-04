@@ -2031,18 +2031,35 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     return peers;
   };
 
+  const mergePlayerRecord = (current = {}, incoming = {}) => {
+    const merged = { ...current, ...incoming };
+    merged.index = Math.max(current.index || 0, incoming.index || 0);
+    merged.score = Math.max(current.score || 0, incoming.score || 0);
+    merged.finished = !!current.finished || !!incoming.finished;
+    if (merged.finished) {
+      merged.elapsedMs = incoming.finished && incoming.elapsedMs != null
+        ? incoming.elapsedMs
+        : current.finished && current.elapsedMs != null
+          ? current.elapsedMs
+          : incoming.elapsedMs ?? current.elapsedMs ?? null;
+    } else {
+      merged.elapsedMs = incoming.elapsedMs ?? current.elapsedMs ?? null;
+    }
+    return merged;
+  };
+
   const mergeRoomPlayers = (list, scores, state = roomStateRef.current) => {
     const byId = new Map();
     list.forEach((p) => {
-      byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || p.__isMe });
+      byId.set(p.id, mergePlayerRecord(byId.get(p.id), { ...p, __isMe: p.id === clientIdRef.current || p.__isMe }));
     });
     recentPeerPlayers().forEach((p) => {
-      byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || p.__isMe });
+      byId.set(p.id, mergePlayerRecord(byId.get(p.id), { ...p, __isMe: p.id === clientIdRef.current || p.__isMe }));
     });
     (state?.participants || []).forEach((p) => {
-      byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || byId.get(p.id)?.__isMe });
+      byId.set(p.id, mergePlayerRecord(byId.get(p.id), { ...p, __isMe: p.id === clientIdRef.current || byId.get(p.id)?.__isMe }));
     });
-    byId.set(clientIdRef.current, { ...byId.get(clientIdRef.current), ...selfPlayer() });
+    byId.set(clientIdRef.current, mergePlayerRecord(byId.get(clientIdRef.current), selfPlayer()));
     return Array.from(byId.values())
       .map((p) => ({ ...p, matchScore: scores?.[p.id] || 0 }))
       .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
@@ -2139,13 +2156,100 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     setPlayers(scored);
   };
 
+  const cleanLobbyParticipants = (baseList = playersRef.current) => {
+    const byId = new Map();
+    mergeRoomPlayers(baseList, matchScoresRef.current, roomStateRef.current).forEach((p) => {
+      byId.set(p.id, {
+        id: p.id,
+        name: p.name,
+        host: !!p.host,
+        joinedAt: p.joinedAt || Date.now(),
+        score: 0,
+        index: 0,
+        matchScore: matchScoresRef.current[p.id] || p.matchScore || 0,
+        finished: false,
+        elapsedMs: null,
+      });
+    });
+    byId.set(clientIdRef.current, {
+      ...byId.get(clientIdRef.current),
+      id: clientIdRef.current,
+      name: meMetaRef.current.name,
+      host: !!meMetaRef.current.host,
+      joinedAt: meMetaRef.current.joinedAt,
+      score: 0,
+      index: 0,
+      matchScore: matchScoresRef.current[clientIdRef.current] || meMetaRef.current.matchScore || 0,
+      finished: false,
+      elapsedMs: null,
+    });
+    return Array.from(byId.values()).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+  };
+
+  const resetBattleToLobby = (participants = playersRef.current) => {
+    const lobbyPlayers = cleanLobbyParticipants(participants);
+    activeGameIdRef.current = null;
+    completedGameIdRef.current = null;
+    roomStateRef.current = null;
+    if (liveChannelRef.current) {
+      supabaseClient?.removeChannel(liveChannelRef.current);
+      liveChannelRef.current = null;
+    }
+    liveGameIdRef.current = null;
+    meMetaRef.current = {
+      ...meMetaRef.current,
+      score: 0,
+      index: 0,
+      matchScore: matchScoresRef.current[clientIdRef.current] || meMetaRef.current.matchScore || 0,
+      finished: false,
+      elapsedMs: null,
+    };
+    setQuestions(null);
+    setRoomState(null);
+    setBattleStartedAt(null);
+    setLiveReady(false);
+    setMyResult(null);
+    setPhase("lobby");
+    applyLobbyParticipants(lobbyPlayers);
+    trackMe();
+    publishPeer();
+    return lobbyPlayers;
+  };
+
+  const persistLobbyRoom = async (participants) => {
+    if (!supabaseClient || !battleRoomTableReadyRef.current) return;
+    const lobbyRoom = {
+      type: "lobby",
+      roomCode: code,
+      participants,
+      mode: battleMode,
+      config: gameConfig,
+      updatedAt: Date.now(),
+    };
+    const { error } = await supabaseClient
+      .from(BATTLE_ROOMS_TABLE)
+      .upsert({ room_code: code, room: lobbyRoom }, { onConflict: "room_code" });
+    if (error) {
+      battleRoomTableReadyRef.current = false;
+      console.warn("Battle room table unavailable; falling back to realtime only.", error.message || error);
+      return;
+    }
+    channelRef.current?.send({ type: "broadcast", event: "battle-state", payload: lobbyRoom });
+  };
+
   const applyBattleRoomSnapshot = (room) => {
     if (!room || typeof room !== "object") return;
     if (room.type === "start") {
       beginBattle(room);
       return;
     }
-    if (room.type === "lobby") applyLobbyParticipants(room.participants);
+    if (room.type === "lobby") {
+      if (activeGameIdRef.current || completedGameIdRef.current || roomStateRef.current) {
+        resetBattleToLobby(room.participants);
+      } else {
+        applyLobbyParticipants(room.participants);
+      }
+    }
   };
 
   const persistBattleRoomState = async (state = roomStateRef.current) => {
@@ -2278,6 +2382,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
         return;
       }
       roomStateRef.current = { ...roomStateRef.current, participants };
+      channelRef.current?.send({ type: "broadcast", event: "battle-state", payload: packBattleState(nextState) });
       applyLobbyParticipants(participants);
     } catch (_err) {
       battleRoomTableReadyRef.current = false;
@@ -2372,14 +2477,25 @@ function BattleRoom({ code, isHost, name, onLeave }) {
       elapsedMs: null,
     };
     setGameConfig(state.config || gameConfig);
-    setQuestions(state.questions);
-    setRoomState(state);
-    roomStateRef.current = state;
-    applyMatchScores(nextScores);
+    const resetParticipants = (state.participants || []).map((p) => ({
+      ...p,
+      score: 0,
+      index: 0,
+      finished: false,
+      elapsedMs: null,
+    }));
+    const startState = { ...state, participants: resetParticipants };
+    peerMapRef.current.clear();
+    setQuestions(startState.questions);
+    setRoomState(startState);
+    roomStateRef.current = startState;
+    matchScoresRef.current = nextScores;
+    setMatchScores(nextScores);
+    refreshPlayers(resetParticipants, startState);
     trackMe();
     publishPeer();
-    setBattleMode(state.mode || battleMode);
-    setBattleStartedAt(state.startedAt || Date.now());
+    setBattleMode(startState.mode || battleMode);
+    setBattleStartedAt(startState.startedAt || Date.now());
     setMyResult(null);
     setPhase("racing");
   };
@@ -2428,8 +2544,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
       beginBattle(payload);
     });
     channel.on("broadcast", { event: "battle-state" }, ({ payload }) => {
-      if (!payload || payload.type !== "start") return;
-      beginBattle(payload);
+      applyBattleRoomSnapshot(payload);
     });
     channel.on("broadcast", { event: "battle-answer" }, ({ payload }) => handleIncomingBattleAnswer(payload));
     channel.on("broadcast", { event: "battle-advance" }, ({ payload }) => handleIncomingBattleAdvance(payload));
@@ -2734,6 +2849,12 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     burstRoomState(payload);
   };
 
+  const handleChangeSetup = async () => {
+    if (!isHost) return;
+    const participants = resetBattleToLobby(playersRef.current);
+    await persistLobbyRoom(participants);
+  };
+
   const handleFinishRace = (result) => {
     completedGameIdRef.current = activeGameIdRef.current;
     setMyResult(result);
@@ -2844,11 +2965,16 @@ function BattleRoom({ code, isHost, name, onLeave }) {
                 <Icon name="x" size={17} color={T.navy} stroke={2.2} /><Text style={styles.secondaryTxt}>Leave</Text>
               </Touchable>
               {isHost && (
-                <Touchable className="press" onPress={handleStart} style={[styles.primaryBtn, styles.resultActionBtn, { flex: 1.45 }]}>
-                  <Icon name="refresh" size={18} color={T.onRed} stroke={2.4} /><Text style={styles.primaryTxt}>Play Again</Text>
+                <Touchable className="press" onPress={handleChangeSetup} style={[styles.secondaryBtn, styles.resultActionBtn, { flex: 1.45 }]}>
+                  <Icon name="grid" size={17} color={T.navy} stroke={2.2} /><Text style={styles.secondaryTxt}>Change Setup</Text>
                 </Touchable>
               )}
             </Row>
+            {isHost && (
+              <Touchable className="press" onPress={handleStart} style={[styles.primaryBtn, styles.resultActionBtn, { marginTop: 10 }]}>
+                <Icon name="refresh" size={18} color={T.onRed} stroke={2.4} /><Text style={styles.primaryTxt}>Play Again</Text>
+              </Touchable>
+            )}
             {!isHost && <Text style={[styles.authNotice, { textAlign: "center", marginTop: 8 }]}>Waiting for the host to start a rematch...</Text>}
           </View>
           <View style={{ height: 28 }} />
