@@ -373,6 +373,10 @@ const NUM_OPTIONS = { easy: 3, medium: 4, hard: 6 };
 const CLASSIC_TOTAL = 10;
 const BATTLE_ROUNDS = 8;
 const MAX_BATTLE_PLAYERS = 5;
+const BATTLE_PEER_STALE_MS = 12000;
+const BATTLE_HEARTBEAT_MS = 1500;
+const BATTLE_STATE_BURST_MS = 8500;
+const BATTLE_STATE_BURST_INTERVAL_MS = 650;
 const BATTLE_ROOM_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const BATTLE_MODES = [
   { key: "race", label: "Race", icon: "stopwatch", desc: "Same flags, race to finish" },
@@ -569,6 +573,29 @@ function makeBattleQuestions(config, count) {
   }
   return questions;
 }
+
+const packBattleQuestion = (question) => ({
+  t: question?.target?.code || question?.target,
+  o: (question?.options || []).map((country) => country?.code || country).filter(Boolean),
+  y: question?.type || "flagToName",
+});
+const unpackBattleQuestion = (question) => {
+  if (!question) return null;
+  if (question.target?.code && Array.isArray(question.options)) return question;
+  const target = BY_CODE[question.t || question.target];
+  const options = (question.o || question.options || [])
+    .map((country) => BY_CODE[country?.code || country])
+    .filter(Boolean);
+  return target && options.length ? { target, options, type: question.y || question.type || "flagToName" } : null;
+};
+const packBattleState = (state) => state ? ({
+  ...state,
+  questions: (state.questions || []).map(packBattleQuestion),
+}) : state;
+const unpackBattleState = (state) => state ? ({
+  ...state,
+  questions: (state.questions || []).map(unpackBattleQuestion).filter(Boolean),
+}) : state;
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 const accuracy = (r) => (r.total ? Math.round((r.score / r.total) * 100) : 0);
@@ -1947,6 +1974,8 @@ function BattleRoom({ code, isHost, name, onLeave }) {
   const completedGameIdRef = useRef(null);
   const roomStateRef = useRef(null);
   const h2hAdvanceTimerRef = useRef(null);
+  const stateBurstTimerRef = useRef(null);
+  const peerMapRef = useRef(new Map());
   const playersRef = useRef([]);
   const matchScoresRef = useRef({});
   const [players, setPlayers] = useState([]);
@@ -1970,17 +1999,110 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     setTimeout(() => setCopied(false), 1600);
   };
 
+  const selfPlayer = () => ({ id: clientIdRef.current, ...meMetaRef.current, __isMe: true });
+
+  const recentPeerPlayers = () => {
+    const now = Date.now();
+    const peers = [];
+    for (const [id, entry] of peerMapRef.current.entries()) {
+      if (!entry || now - entry.seenAt > BATTLE_PEER_STALE_MS) {
+        peerMapRef.current.delete(id);
+      } else if (entry.player) {
+        peers.push({ ...entry.player, id, __isMe: id === clientIdRef.current });
+      }
+    }
+    return peers;
+  };
+
   const mergeRoomPlayers = (list, scores, state = roomStateRef.current) => {
     const byId = new Map();
     (state?.participants || []).forEach((p) => {
       byId.set(p.id, { ...p, __isMe: p.id === clientIdRef.current });
     });
+    recentPeerPlayers().forEach((p) => {
+      byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || p.__isMe });
+    });
     list.forEach((p) => {
       byId.set(p.id, { ...byId.get(p.id), ...p, __isMe: p.id === clientIdRef.current || p.__isMe });
     });
+    byId.set(clientIdRef.current, { ...byId.get(clientIdRef.current), ...selfPlayer() });
     return Array.from(byId.values())
       .map((p) => ({ ...p, matchScore: scores?.[p.id] || 0 }))
       .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+  };
+
+  const refreshPlayers = (baseList = playersRef.current, state = roomStateRef.current) => {
+    const next = mergeRoomPlayers(baseList, state?.matchScores || matchScoresRef.current, state);
+    playersRef.current = next;
+    setPlayers(next);
+    return next;
+  };
+
+  const trackMe = (channel = channelRef.current) => {
+    if (!channel) return Promise.resolve();
+    const meta = { ...meMetaRef.current };
+    if (isHost && roomStateRef.current) meta.room = packBattleState(roomStateRef.current);
+    return channel.track(meta);
+  };
+
+  const sendBattleEvent = (event, payload, repeats = 0, interval = 260) => {
+    const send = () => {
+      if (!channelRef.current) return;
+      channelRef.current.send({ type: "broadcast", event, payload });
+    };
+    send();
+    for (let i = 1; i <= repeats; i++) setTimeout(send, i * interval);
+  };
+
+  const publishPeer = () => {
+    const channel = channelRef.current;
+    if (!channel || channel.state !== "joined") return;
+    const player = {
+      id: clientIdRef.current,
+      name: meMetaRef.current.name,
+      host: !!meMetaRef.current.host,
+      joinedAt: meMetaRef.current.joinedAt,
+      score: meMetaRef.current.score || 0,
+      index: meMetaRef.current.index || 0,
+      matchScore: meMetaRef.current.matchScore || 0,
+      finished: !!meMetaRef.current.finished,
+      elapsedMs: meMetaRef.current.elapsedMs || null,
+    };
+    channel.send({
+      type: "broadcast",
+      event: "battle-peer",
+      payload: {
+        type: "peer",
+        player,
+        state: isHost && roomStateRef.current ? packBattleState(roomStateRef.current) : null,
+      },
+    });
+  };
+
+  const receivePeer = (player, state) => {
+    if (!player || !player.id || player.id === clientIdRef.current) return;
+    peerMapRef.current.set(player.id, { player, seenAt: Date.now() });
+    if (state) beginBattle(state);
+    refreshPlayers();
+  };
+
+  const burstRoomState = (state = roomStateRef.current) => {
+    if (!isHost || !state || !channelRef.current) return;
+    const startedAt = Date.now();
+    if (stateBurstTimerRef.current) clearInterval(stateBurstTimerRef.current);
+    const sendState = () => {
+      if (!channelRef.current || channelRef.current.state !== "joined") return;
+      channelRef.current.send({ type: "broadcast", event: "battle-state", payload: packBattleState(roomStateRef.current || state) });
+    };
+    sendState();
+    stateBurstTimerRef.current = setInterval(() => {
+      if (Date.now() - startedAt > BATTLE_STATE_BURST_MS) {
+        clearInterval(stateBurstTimerRef.current);
+        stateBurstTimerRef.current = null;
+        return;
+      }
+      sendState();
+    }, BATTLE_STATE_BURST_INTERVAL_MS);
   };
 
   const applyMatchScores = (scores) => {
@@ -1995,37 +2117,47 @@ function BattleRoom({ code, isHost, name, onLeave }) {
   };
 
   const publishRoomState = (nextState) => {
-    roomStateRef.current = nextState;
-    setRoomState(nextState);
-    const nextScores = nextState?.matchScores || {};
+    const versionedState = {
+      ...nextState,
+      stateVersion: Math.max(nextState?.stateVersion || 0, (roomStateRef.current?.stateVersion || 0) + 1),
+    };
+    roomStateRef.current = versionedState;
+    setRoomState(versionedState);
+    const nextScores = versionedState?.matchScores || {};
     applyMatchScores(nextScores);
     meMetaRef.current = {
       ...meMetaRef.current,
       matchScore: nextScores[clientIdRef.current] || 0,
-      roomState: nextState,
     };
-    channelRef.current?.track(meMetaRef.current);
-    channelRef.current?.send({ type: "broadcast", event: "battle-state", payload: nextState });
+    trackMe();
+    channelRef.current?.send({ type: "broadcast", event: "battle-state", payload: packBattleState(versionedState) });
+    burstRoomState(versionedState);
+    return versionedState;
   };
 
   const beginBattle = (payload) => {
-    if (!payload || payload.type !== "start" || !Array.isArray(payload.questions) || !payload.questions.length) return;
-    const gameId = payload.gameId || `${payload.startedAt || Date.now()}`;
+    const state = unpackBattleState(payload);
+    if (!state || state.type !== "start" || !Array.isArray(state.questions) || !state.questions.length) return;
+    const gameId = state.gameId || `${state.startedAt || Date.now()}`;
     if (completedGameIdRef.current === gameId) return;
     if (activeGameIdRef.current === gameId) {
-      const nextScores = payload.matchScores || matchScoresRef.current;
-      roomStateRef.current = payload;
-      setRoomState(payload);
+      const incomingVersion = state.stateVersion || 0;
+      const currentVersion = roomStateRef.current?.stateVersion || 0;
+      if (incomingVersion && currentVersion && incomingVersion < currentVersion) return;
+      const nextScores = state.matchScores || matchScoresRef.current;
+      roomStateRef.current = state;
+      setRoomState(state);
       applyMatchScores(nextScores);
       meMetaRef.current = { ...meMetaRef.current, matchScore: nextScores[clientIdRef.current] || 0 };
-      channelRef.current?.track(meMetaRef.current);
-      setBattleMode(payload.mode || battleMode);
-      setPhase(payload.phase === "done" ? "done" : "racing");
+      trackMe();
+      publishPeer();
+      setBattleMode(state.mode || battleMode);
+      setPhase(state.phase === "done" ? "done" : "racing");
       return;
     }
     activeGameIdRef.current = gameId;
     completedGameIdRef.current = null;
-    const nextScores = payload.matchScores || matchScoresRef.current;
+    const nextScores = state.matchScores || matchScoresRef.current;
     meMetaRef.current = {
       ...meMetaRef.current,
       score: 0,
@@ -2034,14 +2166,15 @@ function BattleRoom({ code, isHost, name, onLeave }) {
       finished: false,
       elapsedMs: null,
     };
-    channelRef.current?.track(meMetaRef.current);
-    setGameConfig(payload.config || gameConfig);
-    setQuestions(payload.questions);
-    setRoomState(payload);
-    roomStateRef.current = payload;
+    setGameConfig(state.config || gameConfig);
+    setQuestions(state.questions);
+    setRoomState(state);
+    roomStateRef.current = state;
     applyMatchScores(nextScores);
-    setBattleMode(payload.mode || battleMode);
-    setBattleStartedAt(payload.startedAt || Date.now());
+    trackMe();
+    publishPeer();
+    setBattleMode(state.mode || battleMode);
+    setBattleStartedAt(state.startedAt || Date.now());
     setMyResult(null);
     setPhase("racing");
   };
@@ -2050,12 +2183,20 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     if (!supabaseClient) { setStatus("error"); return; }
     let cancelled = false;
     const channel = supabaseClient.channel(`battle-room-${code}`, {
-      config: { broadcast: { self: true }, presence: { key: clientIdRef.current } },
+      config: { broadcast: { self: true, ack: true }, presence: { key: clientIdRef.current } },
     });
     channelRef.current = channel;
 
     // My own presence update can lag behind a flaky connection; the local
     // meMetaRef is always accurate, so it wins over whatever the server echoes back.
+    const applyHostPresenceRoom = (presence = channel.presenceState()) => {
+      const hostRoom = Object.entries(presence)
+        .map(([id, metas]) => metas.length ? { id, ...metas[metas.length - 1] } : null)
+        .filter(Boolean)
+        .find((p) => p.id !== clientIdRef.current && p.host && p.room)?.room;
+      if (hostRoom) beginBattle(hostRoom);
+    };
+
     const syncPlayers = () => {
       const state = channel.presenceState();
       const list = Object.entries(state)
@@ -2070,13 +2211,11 @@ function BattleRoom({ code, isHost, name, onLeave }) {
         ? list
         : [{ id: clientIdRef.current, ...meMetaRef.current, __isMe: true }, ...list]
             .sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
-      const hostState = nextList.find((p) => p.host && p.roomState?.type === "start")?.roomState;
-      const scoredList = hostState?.matchScores
-        ? mergeRoomPlayers(nextList, hostState.matchScores, hostState)
-        : nextList;
+      const hostRoom = list.find((p) => p.id !== clientIdRef.current && p.host && p.room)?.room;
+      if (hostRoom) beginBattle(hostRoom);
+      const scoredList = mergeRoomPlayers(nextList, roomStateRef.current?.matchScores || matchScoresRef.current, roomStateRef.current);
       playersRef.current = scoredList;
       setPlayers(scoredList);
-      if (hostState && hostState.gameId !== completedGameIdRef.current) beginBattle(hostState);
     };
 
     channel.on("broadcast", { event: "battle" }, ({ payload }) => {
@@ -2089,7 +2228,19 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     });
     channel.on("broadcast", { event: "battle-answer" }, ({ payload }) => {
       if (!payload || payload.type !== "answer") return;
-      recordHeadToHeadAnswer(payload);
+      if (isHost) recordHeadToHeadAnswer(payload);
+      else applyHeadToHeadAnswer(payload);
+    });
+    channel.on("broadcast", { event: "battle-advance" }, ({ payload }) => {
+      applyHeadToHeadAdvance(payload);
+    });
+    channel.on("broadcast", { event: "battle-peer" }, ({ payload }) => {
+      if (!payload || payload.type !== "peer") return;
+      receivePeer(payload.player, payload.state);
+    });
+    channel.on("broadcast", { event: "battle-request-state" }, ({ payload }) => {
+      if (!isHost || !roomStateRef.current || payload?.from === clientIdRef.current) return;
+      burstRoomState(roomStateRef.current);
     });
     channel.on("presence", { event: "sync" }, syncPlayers);
     channel.on("presence", { event: "join" }, syncPlayers);
@@ -2103,9 +2254,11 @@ function BattleRoom({ code, isHost, name, onLeave }) {
           setStatus("full");
           return;
         }
-        await channel.track(meMetaRef.current);
+        await trackMe(channel);
         setStatus("connected");
         syncPlayers();
+        publishPeer();
+        channel.send({ type: "broadcast", event: "battle-request-state", payload: { type: "request-state", from: clientIdRef.current } });
       } else if (subStatus === "CHANNEL_ERROR" || subStatus === "TIMED_OUT") {
         setStatus("error");
       }
@@ -2114,20 +2267,32 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     // Realtime presence can silently drop after a brief disconnect; re-asserting
     // periodically lets a client self-heal once the underlying socket reconnects.
     const heartbeat = setInterval(() => {
-      if (channel.state === "joined") channel.track(meMetaRef.current);
-    }, 4000);
+      if (channel.state === "joined") {
+        trackMe(channel);
+        publishPeer();
+        if (isHost && roomStateRef.current) {
+          channel.send({ type: "broadcast", event: "battle-state", payload: packBattleState(roomStateRef.current) });
+        }
+        if (!isHost) {
+          applyHostPresenceRoom();
+          channel.send({ type: "broadcast", event: "battle-request-state", payload: { type: "request-state", from: clientIdRef.current } });
+        }
+      }
+    }, BATTLE_HEARTBEAT_MS);
 
     return () => {
       cancelled = true;
       clearInterval(heartbeat);
       if (h2hAdvanceTimerRef.current) clearTimeout(h2hAdvanceTimerRef.current);
+      if (stateBurstTimerRef.current) clearInterval(stateBurstTimerRef.current);
       supabaseClient.removeChannel(channel);
     };
   }, [code]);
 
   const updateMe = (patch) => {
     meMetaRef.current = { ...meMetaRef.current, ...patch };
-    channelRef.current?.track(meMetaRef.current);
+    trackMe();
+    publishPeer();
     // Don't wait on a network round-trip to show my own progress.
     setPlayers((list) => {
       let foundMe = false;
@@ -2141,9 +2306,74 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     });
   };
 
+  const publishHeadToHeadAdvance = (state) => {
+    if (!state || state.mode !== "headToHead") return;
+    sendBattleEvent("battle-advance", {
+      type: "advance",
+      gameId: state.gameId,
+      phase: state.phase,
+      questionIndex: state.questionIndex || 0,
+      questionStartedAt: state.questionStartedAt || Date.now(),
+      matchScores: state.matchScores || {},
+      stateVersion: state.stateVersion || 0,
+      allAnswered: !!state.allAnswered,
+    }, 8);
+  };
+
+  const applyHeadToHeadAdvance = (payload) => {
+    if (!payload || payload.type !== "advance") return;
+    const current = roomStateRef.current;
+    if (!current || current.mode !== "headToHead" || payload.gameId !== current.gameId) return;
+    const incomingVersion = payload.stateVersion || 0;
+    const currentVersion = current.stateVersion || 0;
+    if (incomingVersion && currentVersion && incomingVersion < currentVersion) return;
+    beginBattle({
+      ...current,
+      phase: payload.phase || "racing",
+      questionIndex: payload.questionIndex || 0,
+      questionStartedAt: payload.questionStartedAt || Date.now(),
+      answers: {},
+      winnerId: null,
+      allAnswered: !!payload.allAnswered,
+      matchScores: payload.matchScores || current.matchScores || {},
+      stateVersion: incomingVersion || currentVersion + 1,
+    });
+  };
+
+  const advanceLocalHeadToHead = () => {
+    const state = roomStateRef.current;
+    if (!state || state.mode !== "headToHead" || state.phase === "done") return;
+    const nextIndex = (state.questionIndex || 0) + 1;
+    if (nextIndex >= state.questions.length) {
+      beginBattle({
+        ...state,
+        phase: "done",
+        answers: {},
+        winnerId: null,
+        allAnswered: true,
+        stateVersion: (state.stateVersion || 0) + 1,
+      });
+      setPhase("done");
+      return;
+    }
+    beginBattle({
+      ...state,
+      phase: "racing",
+      questionIndex: nextIndex,
+      questionStartedAt: Date.now(),
+      answers: {},
+      winnerId: null,
+      allAnswered: false,
+      stateVersion: (state.stateVersion || 0) + 1,
+    });
+  };
+
   const scheduleHeadToHeadAdvance = (delay = 950) => {
     if (h2hAdvanceTimerRef.current) clearTimeout(h2hAdvanceTimerRef.current);
-    h2hAdvanceTimerRef.current = setTimeout(() => advanceHeadToHead(), delay);
+    h2hAdvanceTimerRef.current = setTimeout(() => {
+      if (isHost) advanceHeadToHead();
+      else advanceLocalHeadToHead();
+    }, delay);
   };
 
   const advanceHeadToHead = () => {
@@ -2152,12 +2382,12 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     if (!state || state.mode !== "headToHead" || state.phase === "done") return;
     const nextIndex = (state.questionIndex || 0) + 1;
     if (nextIndex >= state.questions.length) {
-      const doneState = { ...state, phase: "done", answers: {}, allAnswered: true, winnerId: null };
-      publishRoomState(doneState);
+      const doneState = publishRoomState({ ...state, phase: "done", answers: {}, allAnswered: true, winnerId: null });
+      publishHeadToHeadAdvance(doneState);
       setPhase("done");
       return;
     }
-    publishRoomState({
+    const nextState = publishRoomState({
       ...state,
       phase: "racing",
       questionIndex: nextIndex,
@@ -2166,6 +2396,7 @@ function BattleRoom({ code, isHost, name, onLeave }) {
       winnerId: null,
       allAnswered: false,
     });
+    publishHeadToHeadAdvance(nextState);
   };
 
   const recordHeadToHeadAnswer = (payload) => {
@@ -2202,6 +2433,45 @@ function BattleRoom({ code, isHost, name, onLeave }) {
     else if (allAnswered) scheduleHeadToHeadAdvance(1250);
   };
 
+  const applyHeadToHeadAnswer = (payload) => {
+    if (!payload || payload.type !== "answer" || isHost) return;
+    const state = roomStateRef.current;
+    if (!state || state.mode !== "headToHead" || state.phase === "done") return;
+    if (payload.gameId !== state.gameId || payload.questionIndex !== state.questionIndex) return;
+    const playerId = payload.playerId;
+    if (!playerId || state.answers?.[playerId]) return;
+
+    const question = state.questions[state.questionIndex];
+    if (!question) return;
+    const correct = payload.pickedCode === question.target.code;
+    const answers = {
+      ...(state.answers || {}),
+      [playerId]: {
+        pickedCode: payload.pickedCode,
+        answeredAt: payload.answeredAt || Date.now(),
+        correct,
+      },
+    };
+    const nextScores = { ...(state.matchScores || {}) };
+    let winnerId = state.winnerId || null;
+    if (correct && !winnerId) {
+      winnerId = playerId;
+      nextScores[playerId] = (nextScores[playerId] || 0) + 1;
+    }
+    const activeIds = (state.participants || playersRef.current || []).map((p) => p.id).filter(Boolean);
+    const allAnswered = activeIds.length > 0 && activeIds.every((id) => answers[id]);
+    beginBattle({
+      ...state,
+      answers,
+      winnerId,
+      allAnswered,
+      matchScores: nextScores,
+      stateVersion: (state.stateVersion || 0) + 1,
+    });
+    if (winnerId) scheduleHeadToHeadAdvance(1050);
+    else if (allAnswered) scheduleHeadToHeadAdvance(1250);
+  };
+
   const handleStart = () => {
     const qs = makeBattleQuestions(gameConfig, BATTLE_ROUNDS);
     if (qs.length < 2 || !channelRef.current) return;
@@ -2229,17 +2499,20 @@ function BattleRoom({ code, isHost, name, onLeave }) {
       answers: {},
       winnerId: null,
       allAnswered: false,
+      stateVersion: 1,
     };
     if (isHost) {
-      meMetaRef.current = { ...meMetaRef.current, roomState: payload };
-      channelRef.current.track(meMetaRef.current);
+      meMetaRef.current = { ...meMetaRef.current };
+      trackMe();
     }
     beginBattle(payload);
     channelRef.current.send({
       type: "broadcast",
       event: "battle",
-      payload,
+      payload: packBattleState(payload),
     });
+    channelRef.current.send({ type: "broadcast", event: "battle-state", payload: packBattleState(payload) });
+    burstRoomState(payload);
   };
 
   const handleFinishRace = (result) => {
@@ -2260,8 +2533,8 @@ function BattleRoom({ code, isHost, name, onLeave }) {
       pickedCode: country.code,
       answeredAt,
     };
+    sendBattleEvent("battle-answer", payload, 8);
     if (isHost) recordHeadToHeadAnswer(payload);
-    channelRef.current?.send({ type: "broadcast", event: "battle-answer", payload });
   };
 
   const handleLeave = () => {
