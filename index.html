@@ -285,7 +285,7 @@ const RAW = {
   "North America": [["Antigua & Barbuda","ag",3],["Aruba","aw",3],["Bahamas","bs",2],["Barbados","bb",2],["Belize","bz",3],["Canada","ca",1],["Costa Rica","cr",2],["Cuba","cu",1],["Dominica","dm",3],["Dominican Republic","do",2],["El Salvador","sv",3],["Grenada","gd",3],["Guatemala","gt",2],["Haiti","ht",2],["Honduras","hn",3],["Jamaica","jm",1],["Mexico","mx",1],["Nicaragua","ni",3],["Panama","pa",2],["Puerto Rico","pr",3],["St. Kitts & Nevis","kn",3],["St. Lucia","lc",3],["St. Vincent & Grenadines","vc",3],["Trinidad & Tobago","tt",2],["United States","us",1]],
   "South America": [["Argentina","ar",1],["Bolivia","bo",2],["Brazil","br",1],["Chile","cl",1],["Colombia","co",1],["Ecuador","ec",2],["Guyana","gy",3],["Paraguay","py",3],["Peru","pe",1],["Suriname","sr",3],["Uruguay","uy",2],["Venezuela","ve",2]],
   Oceania: [["Australia","au",1],["Fiji","fj",2],["Kiribati","ki",3],["Marshall Islands","mh",3],["Micronesia","fm",3],["Nauru","nr",3],["New Zealand","nz",1],["Palau","pw",3],["Papua New Guinea","pg",2],["Samoa","ws",3],["Solomon Islands","sb",3],["Tonga","to",3],["Tuvalu","tv",3],["Vanuatu","vu",3]],
-  "Fringe Flags": [["American Samoa","as",3],["Aland Islands","ax",3],["Anguilla","ai",3],["Antarctica","aq",3],["Bermuda","bm",3],["Bouvet Island (Norway)","bv",3],["British Indian Ocean Territory","io",3],["British Virgin Islands","vg",3],["Caribbean Netherlands (BES Islands)","bq",3],["Cayman Islands","ky",3],["Christmas Island","cx",3],["Cocos Islands","cc",3],["Cook Islands","ck",3],["Curacao","cw",3],["Falkland Islands","fk",3],["Faroe Islands","fo",3],["French Guiana","gf",3],["French Polynesia","pf",3],["French Southern & Antarctic Lands","tf",3],["Gibraltar","gi",3],["Greenland","gl",3],["Guadeloupe","gp",3],["Guam","gu",3],["Guernsey","gg",3],["Heard & McDonald Islands","hm",3],["Isle of Man","im",3],["Jersey","je",3],["Macau","mo",3],["Martinique","mq",3],["Mayotte","yt",3],["Montserrat","ms",3],["New Caledonia","nc",3],["Niue","nu",3],["Norfolk Island","nf",3],["Northern Ireland","gb-nir",3],["Northern Mariana Islands","mp",3],["Pitcairn Islands","pn",3],["Reunion","re",3],["Saint Barthelemy","bl",3],["Saint Helena","sh",3],["Saint Martin (France)","mf",3],["Saint Pierre & Miquelon","pm",3],["Scotland","gb-sct",3],["Sint Maarten","sx",3],["South Georgia","gs",3],["Svalbard & Jan Mayen (Norway)","sj",3],["Tokelau","tk",3],["Turks & Caicos Islands","tc",3],["U.S. Minor Outlying Islands (United States)","um",3],["U.S. Virgin Islands","vi",3],["Wales","gb-wls",3],["Wallis & Futuna","wf",3],["Western Sahara","eh",3]],
+  "Fringe Flags": [["Abkhazia","xab",3],["American Samoa","as",3],["Aland Islands","ax",3],["Anguilla","ai",3],["Antarctica","aq",3],["Ascension Island","xasc",3],["Azores","xazr",3],["Bermuda","bm",3],["Bouvet Island (Norway)","bv",3],["British Antarctic Territory","xbat",3],["British Indian Ocean Territory","io",3],["British Virgin Islands","vg",3],["Caribbean Netherlands (BES Islands)","bq",3],["Cayman Islands","ky",3],["Christmas Island","cx",3],["Cocos Islands","cc",3],["Cook Islands","ck",3],["Curacao","cw",3],["Falkland Islands","fk",3],["Faroe Islands","fo",3],["French Guiana","gf",3],["French Polynesia","pf",3],["French Southern & Antarctic Lands","tf",3],["Gibraltar","gi",3],["Greenland","gl",3],["Guadeloupe","gp",3],["Guam","gu",3],["Guernsey","gg",3],["Heard & McDonald Islands","hm",3],["Isle of Man","im",3],["Jersey","je",3],["Macau","mo",3],["Madeira","xmad",3],["Martinique","mq",3],["Mayotte","yt",3],["Montserrat","ms",3],["New Caledonia","nc",3],["Niue","nu",3],["Norfolk Island","nf",3],["Northern Cyprus","xncy",3],["Northern Ireland","gb-nir",3],["Northern Mariana Islands","mp",3],["Pitcairn Islands","pn",3],["Puntland","xpun",3],["Reunion","re",3],["Saint Barthelemy","bl",3],["Saint Helena","sh",3],["Saint Martin (France)","mf",3],["Saint Pierre & Miquelon","pm",3],["Scotland","gb-sct",3],["Sint Maarten","sx",3],["South Georgia","gs",3],["South Ossetia","xsos",3],["Svalbard & Jan Mayen (Norway)","sj",3],["Tibet","xtibet",3],["Tokelau","tk",3],["Transnistria","xtrn",3],["Tristan da Cunha","xtdc",3],["Turks & Caicos Islands","tc",3],["U.S. Minor Outlying Islands (United States)","um",3],["U.S. Virgin Islands","vi",3],["Wales","gb-wls",3],["Wallis & Futuna","wf",3],["Western Sahara","eh",3]],
 };
 const COUNTRIES = Object.entries(RAW).flatMap(([continent, list]) =>
   list.map(([name, code, diff]) => ({ name, code, diff, continent })));
@@ -317,11 +317,11 @@ const SIMILAR_GROUPS = [
   ["cu","pr"],
   ["jp","bd","ne"],
   ["ma","vn","cn"],
-  ["tr","tn","pk"],
+  ["tr","tn","pk","xncy"],
   ["in","ne"],
   ["bo","lt"],
-  ["br","pt","es"],
-  ["ai","bm","vg","ky","ms","tc","fk","sh","gi","io","pn","gs"],
+  ["br","pt","es","xazr","xmad"],
+  ["ai","bm","vg","ky","ms","tc","fk","sh","gi","io","pn","gs","xasc","xtdc","xbat"],
   ["ag","bs","bb","bz","dm","do","gd","ht","kn","lc","vc","tt","pr","vi","bq","cw","sx","mf","bl","gp","mq"],
   ["as","gu","mp","nf","tk","sb","ws","to","nr","ki","mh","fm","pw","pg","nc","pf","wf","cc","cx"],
   ["ad","li","mc","sm","va","mt"],
@@ -332,13 +332,15 @@ const ANSWER_GROUPS = [
   ["cr","th","kp"],
   ["pe","ca","at","lb"],
   ["gb","gb-eng","gb-sct","gb-wls","gb-nir","gg","je","im"],
-  ["gb","au","nz","fj","tv","ck","nu","bm","ky","vg","ai","ms","tc","fk","sh","gs","io","pn"],
-  ["ai","bm","vg","ky","ms","tc","fk","sh","gi","gg","je","im","io","pn","gs"],
+  ["gb","au","nz","fj","tv","ck","nu","bm","ky","vg","ai","ms","tc","fk","sh","gs","io","pn","xasc","xtdc","xbat"],
+  ["ai","bm","vg","ky","ms","tc","fk","sh","gi","gg","je","im","io","pn","gs","xasc","xtdc","xbat"],
   ["ag","bs","bb","bz","cu","dm","do","gd","ht","jm","kn","lc","vc","tt","pr","vi","bq","cw","sx","mf","bl","gp","mq","tc","ky","vg","ai","ms"],
   ["as","gu","mp","ck","nu","nf","tk","tv","sb","fj","ws","to","nr","ki","mh","fm","pw","pg","nc","pf","wf","pn","cc","cx"],
   ["ad","li","mc","sm","va","mt"],
   ["fo","gl","ax","sj","is","no","dk","se","fi"],
   ["gf","gp","mq","re","yt","nc","pf","wf","bl","mf","pm","tf"],
+  ["xab","xncy","xsos","xtrn","xpun","xsom","xk","xtibet","eh"],
+  ["pt","xazr","xmad"],
 ];
 const SIMILAR_COUNT = Array.from(new Set(SIMILAR_GROUPS.flat())).filter((code) => BY_CODE[code]).length;
 
